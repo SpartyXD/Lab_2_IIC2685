@@ -1,0 +1,7 @@
+<launch>
+  <include file="$(find-pkg-share very_simple_robot_simulator)/launch/minimal_simulator_py.xml" />
+  <include file="$(find-pkg-share very_simple_robot_simulator)/launch/openni_simulator.xml" />
+  <include file="$(find-pkg-share very_simple_robot_simulator)/launch/world_state.xml" />
+
+  <node pkg="lab2" exec="NODO.py" name="NOMBRE_NODO" output="screen" />
+</launch>

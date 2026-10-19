@@ -1,0 +1,4 @@
+<launch>
+
+  <node pkg="lab2" exec="NODO.py" name="NOMBRE_NODO" output="screen" />
+</launch>
