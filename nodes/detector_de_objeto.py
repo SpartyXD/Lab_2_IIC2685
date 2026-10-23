@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+from collections import deque
 import rclpy
 import message_filters
 import numpy as np
@@ -9,6 +10,7 @@ import cv2
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
+
 DISTANCIA_MAX = 0.70
 SHOW_MASKS = True
 SHOW_IMG = True
@@ -17,12 +19,14 @@ class ObjectDetector(Node):
     def __init__( self ):
         super().__init__('Obstacle_detector')
 
+        self.queue_rgb = deque(maxlen=2)
+        self.queue_depth = deque(maxlen=2)
+
         # https://stackoverflow.com/questions/57119292/how-to-merge-2-ros-topics-into-1#comment100853370_57120257
-        self.rgb_sub = message_filters.Subscriber(self, Image, '/camera/rgb/image_color')
-        self.depth_sub = message_filters.Subscriber(self, Image, '/camera/depth/image_raw')
-        
-        sync = message_filters.ApproximateTimeSynchronizer([self.rgb_sub, self.depth_sub], 1, 0.05)
-        sync.registerCallback(self.detect_blue_square_cb)
+        self.get_logger().info("Iniciando ...")
+
+        self.depth_sub = self.create_subscriber(Image, '/depth/image/raw', self.depth_callback, 2)
+        self.rgb_sub = self.create_subscriber(Image, '/image_raw', self.rgb_callback, 2)
         
         self.blue_square_position_pub = self.create_publisher(Int16, '/blue_square/position', 2)
         self.blue_square_detected_pub = self.create_publisher(Bool, '/blue_square/detected', 2)
@@ -58,13 +62,29 @@ class ObjectDetector(Node):
         self.lower_blue = np.array([97,134,129] )
         self.upper_blue = np.array([121,255,253])
 
+    def rgb_callback(self, rgb_data):
+        self.get_logger().info("Imagen RGB Recibida")
+        self.queue_rgb.append(rgb_data)
+        self.detect_blue_square_cb()
+
+    def depth_callback(self, depth_data):
+        self.get_logger().info("Depth Recibida")
+        self.queue_rgb.append(depth_data)
+        self.detect_blue_square_cb()
+    
+
     def distancia_valida(self, array):
         valid = (array <= DISTANCIA_MAX) | (np.isnan(array))
         return valid.astype(np.uint8) * 255
 
-    def detect_blue_square_cb(self, rgb_data, depth_data):
+    def detect_blue_square_cb(self):
         #https://docs.opencv.org/4.13.0/df/d9d/tutorial_py_colorspaces.html
+        if not(len(self.queue_rgb)) or not(len(self.queue_depth)):
+            return
 
+        self.get_logger().info("Imagenes recibidad :p")
+        rgb_data = self.queue_rgb.popleft()
+        depth_data = self.queue_depth.popleft()
 
         rgb_array = self.bridge.imgmsg_to_cv2(rgb_data)
         hsv_array = cv2.cvtColor(rgb_array, cv2.COLOR_BGR2HSV)
