@@ -18,8 +18,8 @@ class ObjectDetector(Node):
         super().__init__('Obstacle_detector')
 
         # https://stackoverflow.com/questions/57119292/how-to-merge-2-ros-topics-into-1#comment100853370_57120257
-        self.rgb_sub = message_filters.Subscriber(self, Image, '/camera/rgb/image_color/test')
-        self.depth_sub = message_filters.Subscriber(self, Image, '/camera/depth/image_raw/test')
+        self.rgb_sub = message_filters.Subscriber(self, Image, '/camera/rgb/image_color')
+        self.depth_sub = message_filters.Subscriber(self, Image, '/camera/depth/image_raw')
         
         sync = message_filters.ApproximateTimeSynchronizer([self.rgb_sub, self.depth_sub], 1, 0.05)
         sync.registerCallback(self.detect_blue_square_cb)
