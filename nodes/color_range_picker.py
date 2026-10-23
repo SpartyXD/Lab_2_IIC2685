@@ -18,6 +18,7 @@ import cv2
 import numpy as np
 import rclpy
 from cv_bridge import CvBridge, CvBridgeError
+from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
@@ -260,7 +261,9 @@ def main(args=None):
                 )
             except cv2.error:
                 break
-            if visible < 1:
+            # En GTK getWindowProperty devuelve -1 cuando no puede
+            # determinar la visibilidad. Solo 0 significa ventana cerrada.
+            if visible == 0:
                 break
 
             key = cv2.waitKey(1) & 0xFF
@@ -272,7 +275,7 @@ def main(args=None):
                 node.reset_selection()
             elif key == ord('c'):
                 node.copy_current()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
         node.destroy_node()
