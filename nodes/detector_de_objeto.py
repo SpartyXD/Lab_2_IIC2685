@@ -38,9 +38,7 @@ class ObjectDetector(Node):
         blob_params.maxArea = 100000
         
         # Filter by Circularity
-        blob_params.filterByCircularity = True
-        blob_params.minCircularity = 0.5
-        blob_params.maxCircularity = 0.9
+        blob_params.filterByCircularity = False
         
         # Filter by Convexity
         blob_params.filterByConvexity = True
@@ -57,8 +55,8 @@ class ObjectDetector(Node):
         self.detector = cv2.SimpleBlobDetector_create(blob_params)
 
 
-        self.lower_blue = np.array([110,50,50])
-        self.upper_blue = np.array([130,255,255])
+        self.lower_blue = np.array([97,134,129])
+        self.upper_blue = np.array([121,255,253])
 
     def distancia_valida(self, array):
         valid = (array <= DISTANCIA_MAX) | (np.isnan(array))
