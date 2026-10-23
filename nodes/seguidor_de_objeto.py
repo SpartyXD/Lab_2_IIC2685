@@ -14,7 +14,7 @@ class PIDController( Node ):
   def __init__( self):
     super().__init__( 'p_controller' )
     self.kp = KP
-    self.cmd_vel_pub = self.create_publisher(Twist, "/cmd_vel", 10)
+    self.cmd_vel_pub = self.create_publisher(Twist, "/commands/velocity", 10)
     self.blue_square_position_sub = message_filters.Subscriber(self, Int16, '/blue_square/position')
     self.blue_square_detected_sub = message_filters.Subscriber(self, Bool, '/blue_square/detected')
 
