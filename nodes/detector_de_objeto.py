@@ -25,8 +25,8 @@ class ObjectDetector(Node):
         # https://stackoverflow.com/questions/57119292/how-to-merge-2-ros-topics-into-1#comment100853370_57120257
         self.get_logger().info("Iniciando ...")
 
-        self.depth_sub = self.create_subscriber(Image, '/depth/image/raw', self.depth_callback, 2)
-        self.rgb_sub = self.create_subscriber(Image, '/image_raw', self.rgb_callback, 2)
+        self.depth_sub = self.create_subscription(Image, '/depth/image_raw', self.depth_callback, 2)
+        self.rgb_sub = self.create_subscription(Image, '/image_raw', self.rgb_callback, 2)
         
         self.blue_square_position_pub = self.create_publisher(Int16, '/blue_square/position', 2)
         self.blue_square_detected_pub = self.create_publisher(Bool, '/blue_square/detected', 2)
@@ -69,7 +69,7 @@ class ObjectDetector(Node):
 
     def depth_callback(self, depth_data):
         self.get_logger().info("Depth Recibida")
-        self.queue_rgb.append(depth_data)
+        self.queue_depth.append(depth_data)
         self.detect_blue_square_cb()
     
 
@@ -82,20 +82,22 @@ class ObjectDetector(Node):
         if not(len(self.queue_rgb)) or not(len(self.queue_depth)):
             return
 
-        self.get_logger().info("Imagenes recibidad :p")
+        self.get_logger().info("Imagenes recibidas :p")
         rgb_data = self.queue_rgb.popleft()
         depth_data = self.queue_depth.popleft()
 
         rgb_array = self.bridge.imgmsg_to_cv2(rgb_data)
-        hsv_array = cv2.cvtColor(rgb_array, cv2.COLOR_BGR2HSV)
+        bgr_array = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2BGR)
+        hsv_array = cv2.cvtColor(rgb_array, cv2.COLOR_RGB2HSV)
+
         depth_array = self.bridge.imgmsg_to_cv2(depth_data)
         alto, ancho = depth_array.shape
 
         mask_distancia = self.distancia_valida(depth_array)
         mask_color = cv2.inRange(hsv_array, self.lower_blue, self.upper_blue)
 
-        imagen_distancia_valida = cv2.bitwise_and(rgb_array, rgb_array, mask= mask_distancia)
-        imagen_color_valido= cv2.bitwise_and(rgb_array, rgb_array, mask= mask_distancia & mask_color)
+        imagen_distancia_valida = cv2.bitwise_and(bgr_array, bgr_array, mask= mask_distancia)
+        imagen_color_valido= cv2.bitwise_and(bgr_array, bgr_array, mask= mask_distancia & mask_color)
         
         # Detect blob
         x=0
@@ -106,9 +108,9 @@ class ObjectDetector(Node):
             coords = tuple(map(int, blob.pt))
             x =  int(coords[0]-ancho/2)
             detected = True
-            cv2.putText(rgb_array, str(x), coords, 1, 2, (0, 0, 0),1)
-            cv2.line(rgb_array, (int(ancho/2), coords[1]), coords, (0, 0, 0), 2)
-        cv2.line(rgb_array, (int(ancho/2), 0), (int(ancho/2), alto), (0, 0, 0), 2)
+            cv2.putText(bgr_array, str(x), coords, 1, 2, (0, 0, 0),1)
+            cv2.line(bgr_array, (int(ancho/2), coords[1]), coords, (0, 0, 0), 2)
+        cv2.line(bgr_array, (int(ancho/2), 0), (int(ancho/2), alto), (0, 0, 0), 2)
 
 
         pos_x = Int16()
@@ -122,7 +124,7 @@ class ObjectDetector(Node):
             cv2.imshow('Distancia Válida', imagen_distancia_valida)
             cv2.imshow('Colores Válidos (dentro de la distancia valida)', imagen_color_valido)
         if SHOW_IMG:
-            cv2.imshow('Imagen Posicion Cuadrado Azul', rgb_array)
+            cv2.imshow('Imagen Posicion Cuadrado Azul', bgr_array)
         if SHOW_MASKS or SHOW_IMG:
             cv2.waitKey(1)
             
