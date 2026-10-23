@@ -14,6 +14,12 @@ find_package(ament_cmake REQUIRED)
 install(PROGRAMS
   nodes/dead_reckoning_nav.py
   nodes/pose_loader.py
+  nodes/color_range_picker.py
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+install(FILES
+  nodes/hsv_ranges.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
