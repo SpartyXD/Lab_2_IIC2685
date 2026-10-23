@@ -55,7 +55,7 @@ class ObjectDetector(Node):
         self.detector = cv2.SimpleBlobDetector_create(blob_params)
 
 
-        self.lower_blue = np.array([97,134,129])
+        self.lower_blue = np.array([97,134,129] )
         self.upper_blue = np.array([121,255,253])
 
     def distancia_valida(self, array):
