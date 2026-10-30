@@ -14,6 +14,7 @@ find_package(ament_cmake REQUIRED)
 install(PROGRAMS
   nodes/color_range_picker.py 
   nodes/dead_reckoning_nav.py
+  nodes/depth_snapshot.py
   nodes/detector_de_objeto_tester.py 
   nodes/detector_de_objeto.py
   nodes/follow_the_carrot.py
