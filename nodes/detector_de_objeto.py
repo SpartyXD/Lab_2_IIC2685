@@ -13,8 +13,8 @@ import cv2
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
-
-DISTANCIA_MAX = 0.70
+DISTANCIA_MAX = 100
+DISTANCIA_MAX = 1500
 SHOW_MASKS = True
 SHOW_IMG = True
 
@@ -87,7 +87,7 @@ class ObjectDetector(Node):
     
 
     def distancia_valida(self, array):
-        valid = ~(np.isnan(array)) & (array <= DISTANCIA_MAX)
+        valid = ~(np.isnan(array)) & (array >= DISTANCIA_MIN) & (array <= DISTANCIA_MAX)
         return valid.astype(np.uint8) * 255
 
     def detect_blue_square_cb(self):
