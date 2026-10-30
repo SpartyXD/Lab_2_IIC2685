@@ -138,12 +138,45 @@ def format_hsv_ranges(pairs):
     return '\n'.join(lines)
 
 
-def save_ranges(path, pairs):
-    """Guarda el primer rango HSV en path con json.dump."""
+def merge_pairs(pairs):
+    """Fusiona varios rangos HSV en una sola caja envolvente.
+
+    Toma el mínimo de los ``lower`` y el máximo de los ``upper`` de cada
+    canal. Si los rangos no se solapan, el resultado también cubre los
+    valores intermedios entre ellos.
+    """
+    if not pairs:
+        raise ValueError('No hay rangos HSV para fusionar')
+
+    lowers = np.array([lower for lower, _ in pairs], dtype=np.int32)
+    uppers = np.array([upper for _, upper in pairs], dtype=np.int32)
+    return [
+        (
+            np.min(lowers, axis=0).astype(np.uint8),
+            np.max(uppers, axis=0).astype(np.uint8),
+        )
+    ]
+
+
+def save_ranges(path, pairs, append=False):
+    """Guarda un único rango HSV en path con json.dump.
+
+    Con ``append=True`` lee los rangos que ya están en path y los fusiona
+    con los nuevos usando :func:`merge_pairs`. El archivo conserva el
+    formato ``lower``/``upper``. Devuelve el par que quedó guardado.
+    """
     if not pairs:
         raise ValueError('No hay rangos HSV para guardar')
 
-    lower, upper = pairs[0]
+    merged = merge_pairs(pairs)
+    if append:
+        try:
+            previous = load_ranges(path)
+        except FileNotFoundError:
+            previous = []
+        merged = merge_pairs(previous + merged)
+
+    lower, upper = merged[0]
     data = {
         'lower': _as_int_list(lower),
         'upper': _as_int_list(upper),
@@ -153,7 +186,7 @@ def save_ranges(path, pairs):
     with open(path, 'w', encoding='utf-8') as ranges_file:
         json.dump(data, ranges_file, indent=2)
         ranges_file.write('\n')
-    return data
+    return merged
 
 
 def load_ranges(path):

@@ -5,13 +5,15 @@ Controles:
     espacio    congela o descongela la imagen
     click izq  dibuja el borde del objeto sobre la imagen congelada
     r          borra el trazo y los rangos
-    s          vuelve a guardar los rangos en el archivo JSON
+    s          guarda los rangos y sobrescribe el archivo JSON
+    a          fusiona los rangos con los del archivo y lo sobrescribe
     c          vuelve a copiar los rangos al portapapeles
     q / Esc    cierra
 
-Al soltar el mouse, los rangos se amplían con un margen de seguridad, se
-guardan en config/hsv_ranges.json y se copian al portapapeles. Reinicia
-detector_de_objeto.py para que cargue los nuevos rangos.
+Al soltar el mouse, los rangos se amplían con un margen de seguridad y se
+copian al portapapeles, pero no se guardan. Usa s o a para escribir
+config/hsv_ranges.json. Reinicia detector_de_objeto.py para que cargue los
+nuevos rangos.
 """
 
 import os
@@ -36,10 +38,10 @@ from hsv_ranges import (
 )
 
 MASK_WINDOW = 'Mask'
-INSTRUCTIONS_LIVE = 'espacio: congelar  |  q: salir'
+INSTRUCTIONS_LIVE = ('espacio: congelar  |  q: salir',)
 INSTRUCTIONS_FROZEN = (
-    'r: borrar  |  s: guardar  |  c: copiar  |  '
-    'espacio: volver  |  q: salir'
+    'r: borrar  |  s: guardar  |  a: agregar  |  c: copiar',
+    'espacio: volver  |  q: salir',
 )
 
 
@@ -68,6 +70,7 @@ class ColorRangePicker(Node):
         self.mask_preview = None
         self.mask_window_open = False
         self.clipboard_text = ''
+        self.save_note = ''
         self.tk_root = None
         self.window_name = f'Rangos HSV - {self.topic}'
 
@@ -123,6 +126,7 @@ class ColorRangePicker(Node):
             self.pairs = []
             self.mask_preview = None
             self.clipboard_text = ''
+            self.save_note = ''
         elif event == cv2.EVENT_MOUSEMOVE and self.drawing:
             last_x, last_y = self.points[-1]
             if abs(x - last_x) + abs(y - last_y) >= 2:
@@ -147,18 +151,25 @@ class ColorRangePicker(Node):
             saturation_margin=self.saturation_margin,
             value_margin=self.value_margin,
         )
-        mask = build_mask(hsv, self.pairs)
+        self.update_preview(self.pairs)
+
+        self.clipboard_text = format_hsv_ranges(self.pairs)
+        self.save_note = ''
+        self.get_logger().info(
+            'Rangos HSV con margen de seguridad:\n' + self.clipboard_text
+        )
+        self.get_logger().info(
+            'Presiona s para sobrescribir o a para fusionar con el archivo.'
+        )
+        self.copy_current()
+
+    def update_preview(self, pairs):
+        hsv = cv2.cvtColor(self.frozen, cv2.COLOR_BGR2HSV)
+        mask = build_mask(hsv, pairs)
         mask_view = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
         result_view = cv2.bitwise_and(self.frozen, self.frozen, mask=mask)
         separator = np.full((mask.shape[0], 2, 3), 255, dtype=np.uint8)
         self.mask_preview = np.hstack([mask_view, separator, result_view])
-
-        self.clipboard_text = format_hsv_ranges(self.pairs)
-        self.get_logger().info(
-            'Rangos HSV con margen de seguridad:\n' + self.clipboard_text
-        )
-        self.save_current()
-        self.copy_current()
 
     def toggle_freeze(self):
         if self.frozen is None:
@@ -176,6 +187,7 @@ class ColorRangePicker(Node):
         self.pairs = []
         self.mask_preview = None
         self.clipboard_text = ''
+        self.save_note = ''
         self.close_mask_window()
 
     def close_mask_window(self):
@@ -187,23 +199,41 @@ class ColorRangePicker(Node):
             pass
         self.mask_window_open = False
 
-    def save_current(self):
+    def save_current(self, append=False):
         if not self.pairs:
             self.get_logger().warn('Todavía no hay rangos para guardar.')
             return
 
+        if append and not os.path.exists(self.ranges_file):
+            self.get_logger().warn(
+                f'No existe {self.ranges_file}; se guardará como nuevo.'
+            )
+
         try:
-            save_ranges(self.ranges_file, self.pairs)
+            saved = save_ranges(
+                self.ranges_file, self.pairs, append=append
+            )
         except (OSError, ValueError) as error:
             self.get_logger().error(
                 f'No se pudieron guardar los rangos en '
                 f'{self.ranges_file}: {error}'
             )
             return
-        self.get_logger().info(f'Rangos guardados en {self.ranges_file}')
+
+        self.update_preview(saved)
+        self.clipboard_text = format_hsv_ranges(saved)
+        mode = 'fusionado con los anteriores' if append else 'sobrescrito'
+        self.save_note = (
+            f'Guardado: {os.path.basename(self.ranges_file)} ({mode})'
+        )
+        self.get_logger().info(
+            f'Rangos guardados en {self.ranges_file} ({mode}):\n'
+            f'{self.clipboard_text}'
+        )
         self.get_logger().info(
             'Reinicia detector_de_objeto.py para cargar los nuevos rangos.'
         )
+        self.copy_current()
 
     def copy_current(self):
         if not self.clipboard_text:
@@ -255,7 +285,7 @@ class ColorRangePicker(Node):
 
     def refresh(self):
         if self.frozen is None:
-            lines = [INSTRUCTIONS_LIVE]
+            lines = list(INSTRUCTIONS_LIVE)
             if self.latest is None:
                 frame = np.zeros((480, 640, 3), dtype=np.uint8)
                 cv2.putText(
@@ -282,12 +312,11 @@ class ColorRangePicker(Node):
             lines = []
             if self.clipboard_text:
                 lines.extend(self.clipboard_text.splitlines())
-                lines.append(
-                    f'Guardado: {os.path.basename(self.ranges_file)}'
-                )
+                if self.save_note:
+                    lines.append(self.save_note)
             else:
                 lines.append('Dibuja el borde del objeto con click izquierdo')
-            lines.append(INSTRUCTIONS_FROZEN)
+            lines.extend(INSTRUCTIONS_FROZEN)
 
         frame = self.with_status(frame, lines)
         cv2.imshow(self.window_name, frame)
@@ -346,6 +375,8 @@ def main(args=None):
                 node.reset_selection()
             elif key == ord('s'):
                 node.save_current()
+            elif key == ord('a'):
+                node.save_current(append=True)
             elif key == ord('c'):
                 node.copy_current()
     except (KeyboardInterrupt, ExternalShutdownException):
