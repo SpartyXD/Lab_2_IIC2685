@@ -55,7 +55,7 @@ class ObjectDetector(Node):
         
         # Filter by Area
         blob_params.filterByArea = True
-        blob_params.minArea = 1000
+        blob_params.minArea = 400
         blob_params.maxArea = 100000
         
         # Filter by Circularity
