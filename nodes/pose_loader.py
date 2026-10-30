@@ -17,7 +17,7 @@ class PoseLoader(Node):
 
     def load(self):
         #Cargar lista de poses
-        path = os.path.join(pkg_dir('lab1'), 'config', 'pose_list.txt')
+        path = os.path.join(pkg_dir('lab2'), 'config', 'pose_list.txt')
         with open(path) as poses_file:
             for line in poses_file.readlines():
                 pose = Pose()

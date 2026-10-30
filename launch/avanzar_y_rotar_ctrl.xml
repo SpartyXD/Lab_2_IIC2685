@@ -3,5 +3,8 @@
   <include file="$(find-pkg-share very_simple_robot_simulator)/launch/openni_simulator.xml" />
   <include file="$(find-pkg-share very_simple_robot_simulator)/launch/world_state.xml" />
 
-  <node pkg="lab2" exec="NODO.py" name="NOMBRE_NODO" output="screen" />
+  <node pkg="lab2" exec="pose_loader.py" name="pose_loader" output="screen" />
+  <node pkg="lab2" exec="robot_controller.py" name="robot_controller" output="screen" />
+  <node pkg="lab2" exec="trajectory_logger.py" name="trajectorylogger" output="screen" />
+  <node pkg="lab2" exec="dead_reckoning_nav.py" name="dead_reckoning_nav" output="screen" />
 </launch>

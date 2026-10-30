@@ -3,21 +3,40 @@ import math
 from time import time, sleep
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist, PoseArray, Vector3
-from std_msgs.msg import String
+from geometry_msgs.msg import Twist, PoseArray, Vector3, Pose
+from std_msgs.msg import String, Float64
 from math import atan2, sqrt
 from threading import Thread
 #Ocuparemos el molde que nos dio el Nacho, crack
 
 FACTOR_CORRECCION = 1.1
+INFTY = 1e9 #Le mandaremos esto al controlador pa que se quede quietito si no quiero pescar el setpoint
+POSE_EPSILON = 0.1 #epsilon de pose
+ANGLE_EPSILON = 0.1 #epsilon de angulo
+UMBRAL_TRAMO = 0.15 
+
+def normalizar(a):
+    #Lleva cualquier angulo a (-pi, pi)
+    return math.atan2(math.sin(a), math.cos(a))
+
 
 class DeadReckoningNav(Node):
     def __init__(self):
         super().__init__("dead_reckoning_nav")
         self.pos_actual = [0.0, 0.0, 0.0]
-        self.lineal_vel = 0.2 
-        self.rot_vel = 1.0
         self.wait_time = 0.1
+
+        self.real_pose = self.create_subscription(Pose, "/real_pose", self.real_cb, 10)
+        self.vel_effort_queue = []
+        self.angle_effort_queue = []
+
+        self.dist_set_point = self.create_publisher( Float64, "/velocity_setpoint", 1 )
+        self.dist_state = self.create_publisher( Float64, "/velocity_measure", 1 )
+        self.vel_actuation = self.create_subscription( Float64, "/velocity_effort", self.vel_cb, 1)
+
+        self.angle_set_point = self.create_publisher( Float64, "/angle_setpoint", 1 )
+        self.angle_state = self.create_publisher( Float64, "/angle_measure", 1 )
+        self.angle_actuation = self.create_subscription( Float64, "/angle_effort", self.angle_cb, 1 )
 
         self.cmd_vel_pub = self.create_publisher(Twist, "/cmd_vel", 10)
         self.goal_list_sub = self.create_subscription(PoseArray, "/goal_list", self.accion_mover, 10)
@@ -25,32 +44,113 @@ class DeadReckoningNav(Node):
         self.evento_pub = self.create_publisher(String, "/trajectory_events", 10)
         self.hay_obstaculo = False
 
-    def aplicar_velocidad(self, speed_command_list):
+
+    def real_cb(self, msg):
+        self.pos_actual[0] = msg.position.x
+        self.pos_actual[1] = msg.position.y
+        self.pos_actual[2] = normalizar(2*math.atan2(msg.orientation.z, msg.orientation.w))
+        self.get_logger().info(f"Estoy en {self.pos_actual}", throttle_duration_sec=1.0)
+
+    def vel_cb(self, msg):
+        self.vel_effort_queue.append(msg.data)
+
+    def angle_cb(self, msg):
+        self.angle_effort_queue.append(msg.data)
+
+    def detener(self):
         speed = Twist()
-        for x, w, t in speed_command_list:
-            self.get_logger().info('Publicando velocidad (%f, %f) por %fs' % (x, w, t))
-            t0 = time()
-            while time()-t0 <= t:         
-                if self.hay_obstaculo:
-                    speed.linear.x, speed.angular.z = (0.0, 0.0)
-                    self.cmd_vel_pub.publish(speed)
-                    t+= self.wait_time
-                    sleep(self.wait_time)
-                else:
-                    speed.linear.x, speed.angular.z = x, w
-                    self.cmd_vel_pub.publish(speed)
+        speed.linear.x, speed.angular.z = (0.0, 0.0)
+        self.cmd_vel_pub.publish(speed)
+
+
+    def aplicar_controlador_vel(self, distancia):
+        self.vel_effort_queue.clear()
+        msg = Float64()
+        speed = Twist()
+ 
+        x0, y0, th0 = self.pos_actual
+        cos_angle, sin_angle = math.cos(th0), math.sin(th0)
+ 
+        #Silenciar al Controlador de angulo
+        msg.data = INFTY
+        self.angle_set_point.publish(msg)
+ 
+        msg.data = float(distancia)
+        self.dist_set_point.publish(msg)
+ 
+        recorrido = 0.0
+        while(abs(distancia - recorrido) > POSE_EPSILON):
+            #Publicar estado
+            msg.data = recorrido
+            self.dist_state.publish(msg)
+ 
+            #Aplicar lo q el controlador me diga
+            try:
+                vel = self.vel_effort_queue.pop(0)
+                speed.linear.x, speed.angular.z = (vel, 0.0)
+                self.cmd_vel_pub.publish(speed)
+            except IndexError:
+                self.get_logger().warning("Cola de vel vacia :c")
+            sleep(0.1)
+ 
+            recorrido = (self.pos_actual[0] - x0)*cos_angle + (self.pos_actual[1] - y0)*sin_angle
+
+
+    def aplicar_controlador_angulo(self, setpoint):
+        self.angle_effort_queue.clear()
+        msg = Float64()
+        speed = Twist()
+
+        #Silenciar al Controlador de vel
+        msg.data = INFTY
+        self.dist_set_point.publish(msg)
+
+        msg.data = setpoint
+        self.angle_set_point.publish(msg)
+
+        diff = normalizar(setpoint - self.pos_actual[2])
+        while(abs(diff) > ANGLE_EPSILON):
+            #Publicar estado
+            msg.data = self.pos_actual[2]
+            self.angle_state.publish(msg)
+
+            #Aplicar lo q el controlador me diga
+            try:
+                vel = self.angle_effort_queue.pop(0)
+                speed.linear.x, speed.angular.z = (0.0, vel)
+                self.cmd_vel_pub.publish(speed)
+            except IndexError:
+                self.get_logger().warning("Cola de angulos vacia :c")
+                pass
+            sleep(0.1)
+
+            diff = normalizar(setpoint - self.pos_actual[2])
+            
+
+    def aplicar_velocidad(self, displacement_list):
+        theta_obj = self.pos_actual[2]
+ 
+        for lin, rot in displacement_list:
+            self.get_logger().info(f"Desplazamiento: ({lin:.3f}, {rot:.3f})")
+ 
+            while self.hay_obstaculo:
+                self.detener()
+                sleep(self.wait_time)
+ 
+            if rot != 0.0:
+                theta_obj = normalizar(theta_obj + rot)
+                self.get_logger().info(f"Girando a {theta_obj:.3f}...")
+                self.aplicar_controlador_angulo(theta_obj)
+            elif lin != 0.0:
+                self.get_logger().info(f"Avanzando {lin:.3f} m...")
+                self.aplicar_controlador_vel(lin)
+ 
             self.get_logger().info('Listo')
-
-            speed.linear.x, speed.angular.z = (0.0, 0.0)
-            self.cmd_vel_pub.publish(speed)
+            self.detener()
 
 
-    def giro(self, ang_actual, ang_deseado):
-        delta = math.atan2(math.sin(ang_deseado - ang_actual), math.cos(ang_deseado - ang_actual))
-        return (0.0, math.copysign(self.rot_vel, delta), abs(delta)/self.rot_vel*FACTOR_CORRECCION)
-
-
-    def reapuntar(self, ang_actual, diff_coord, vertical=False):
+            
+    def reapuntar(self, diff_coord, vertical=False):
         #Funcion auxiliar para obtener angulo para reapuntar rapido
         ang_deseado = 0
         if(vertical):
@@ -58,45 +158,47 @@ class DeadReckoningNav(Node):
         else:
             ang_deseado = 0 if diff_coord > 0 else math.pi
 
-        return self.giro(ang_actual, ang_deseado)
-
-
-    def avanzar(self, diff_coord):
-        #Funcion auxiliar que devuelve comando listo para ir a un lugar
-        return (self.lineal_vel, 0.0, abs(diff_coord)/self.lineal_vel)
+        return float(ang_deseado)
         
             
     def mover_robot_a_destino(self, goal_pose):
         self.get_logger().info('Moviendose de (%f, %f, %f) a (%f, %f, %f)' % (*self.pos_actual, *goal_pose))
-        x_goal = goal_pose[0]
-        y_goal = goal_pose[1]
-        angle_goal = goal_pose[2]
+        x_goal = float(goal_pose[0])
+        y_goal = float(goal_pose[1])
+        angle_goal = float(goal_pose[2])
 
-        x_diff = x_goal-self.pos_actual[0]
-        y_diff = y_goal-self.pos_actual[1]
-        angulo_act = self.pos_actual[2]
-
-        #Obtener pasos y aplicar
-        comand_list = []
-
+        x, y, th = self.pos_actual
+        displacement_list = []
+ 
         #Eje X
-        if(x_diff):
-            comand_list.append(self.reapuntar(angulo_act, x_diff))
-            angulo_act = 0 if x_diff >0 else math.pi
-            comand_list.append(self.avanzar(x_diff))
-
+        x_diff = x_goal - x
+        if abs(x_diff) > UMBRAL_TRAMO:
+            rot = normalizar(self.reapuntar(x_diff) - th)
+            if abs(rot) > ANGLE_EPSILON:
+                displacement_list.append((0.0, rot))
+                th = normalizar(th + rot)
+            displacement_list.append((abs(x_diff), 0.0))
+            x = x_goal
+ 
         #Eje Y
-        if(y_diff):
-            comand_list.append(self.reapuntar(angulo_act, y_diff, vertical=True))
-            angulo_act = math.pi/2 if y_diff >0 else -math.pi/2
-            comand_list.append(self.avanzar(y_diff))
-
+        y_diff = y_goal - y
+        if abs(y_diff) > UMBRAL_TRAMO:
+            rot = normalizar(self.reapuntar(y_diff, vertical=True) - th)
+            if abs(rot) > ANGLE_EPSILON:
+                displacement_list.append((0.0, rot))
+                th = normalizar(th + rot)
+            displacement_list.append((abs(y_diff), 0.0))
+            y = y_goal
+ 
         #Angulo final
-        comand_list.append(self.giro(angulo_act, angle_goal))
+        rot = normalizar(angle_goal - th)
+        if abs(rot) > ANGLE_EPSILON:
+            displacement_list.append((0.0, rot))
 
-        self.aplicar_velocidad(comand_list)
-        self.get_logger().info('Llegue a (%f, %f, %f)!' % (x_goal, y_goal, angle_goal))
-        self.pos_actual = goal_pose
+
+        self.aplicar_velocidad(displacement_list)
+        self.get_logger().info('Creo que llegue a (%f, %f, %f)...' % (x_goal, y_goal, angle_goal))
+        self.get_logger().info('Posicion real (%f, %f, %f)!' % (self.pos_actual[0], self.pos_actual[1], self.pos_actual[2]))
         sleep(2)
         
 

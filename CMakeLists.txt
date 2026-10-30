@@ -12,15 +12,16 @@ find_package(ament_cmake REQUIRED)
 # find_package(<dependency> REQUIRED)
 
 install(PROGRAMS
+  nodes/color_range_picker.py 
   nodes/dead_reckoning_nav.py
-  nodes/pose_loader.py
-  nodes/color_range_picker.py
+  nodes/detector_de_objeto_tester.py 
   nodes/detector_de_objeto.py
-  DESTINATION lib/${PROJECT_NAME}
-)
-
-install(FILES
+  nodes/follow_the_carrot.py
   nodes/hsv_ranges.py
+  nodes/robot_controller.py
+  nodes/pose_loader.py
+  nodes/seguidor_de_objeto.py
+  nodes/trajectory_logger.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
