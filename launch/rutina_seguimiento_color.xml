@@ -1,0 +1,6 @@
+<launch>
+    <node pkg="kinect_ros2" exec="kinect_ros2_node" name="kinect_ros2_node" namespace="kinect"/>
+    <include file="$(find-pkg-share kobuki_node)/launch/kobuki_node-launch.py" />
+    <node pkg="Lab_2_IIC2685" exec="seguidor_de_objeto.py" name="p_controller" output="screen" />
+    <node pkg="Lab_2_IIC2685" exec="detector_de_objeto.py" name="Obstacle_detector" output="screen" />
+</launch>
