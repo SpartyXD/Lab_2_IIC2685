@@ -7,7 +7,7 @@ from geometry_msgs.msg import Twist
 import message_filters
 
 
-KP = 0.02
+KP = 0.005
 
 class PIDController( Node ):
 
