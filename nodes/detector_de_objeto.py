@@ -13,7 +13,7 @@ import cv2
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
-DISTANCIA_MAX = 100
+DISTANCIA_MIN = 100
 DISTANCIA_MAX = 1500
 SHOW_MASKS = True
 SHOW_IMG = True
