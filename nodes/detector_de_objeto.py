@@ -55,7 +55,7 @@ class ObjectDetector(Node):
         
         # Filter by Area
         blob_params.filterByArea = True
-        blob_params.minArea = 500
+        blob_params.minArea = 1000
         blob_params.maxArea = 100000
         
         # Filter by Circularity
@@ -87,7 +87,7 @@ class ObjectDetector(Node):
     
 
     def distancia_valida(self, array):
-        valid = (array <= DISTANCIA_MAX) | (np.isnan(array))
+        valid = ~(np.isnan(array)) & (array <= DISTANCIA_MAX)
         return valid.astype(np.uint8) * 255
 
     def detect_blue_square_cb(self):
