@@ -62,7 +62,7 @@ class ObjectDetector(Node):
         blob_params.filterByCircularity = False
         
         # Filter by Convexity
-        blob_params.filterByConvexity = True
+        blob_params.filterByConvexity = False
         blob_params.minConvexity = 0.7
         
         blob_params.filterByColor = True
