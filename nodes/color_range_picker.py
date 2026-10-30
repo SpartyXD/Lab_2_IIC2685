@@ -5,36 +5,59 @@ Controles:
     espacio    congela o descongela la imagen
     click izq  dibuja el borde del objeto sobre la imagen congelada
     r          borra el trazo y los rangos
+    s          vuelve a guardar los rangos en el archivo JSON
     c          vuelve a copiar los rangos al portapapeles
     q / Esc    cierra
 
-Al soltar el mouse, los rangos se copian al portapapeles y se imprimen en la
-terminal.
+Al soltar el mouse, los rangos se amplían con un margen de seguridad, se
+guardan en config/hsv_ranges.json y se copian al portapapeles. Reinicia
+detector_de_objeto.py para que cargue los nuevos rangos.
 """
 
+import os
 import subprocess
 
 import cv2
 import numpy as np
 import rclpy
+from ament_index_python.packages import get_package_share_directory as pkg_dir
 from cv_bridge import CvBridge, CvBridgeError
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import Image
 
-from hsv_ranges import build_mask, format_hsv_ranges, mask_ranges
+from hsv_ranges import (
+    build_mask,
+    format_hsv_ranges,
+    mask_ranges,
+    pad_pairs,
+    save_ranges,
+)
 
 MASK_WINDOW = 'Mask'
 INSTRUCTIONS_LIVE = 'espacio: congelar  |  q: salir'
-INSTRUCTIONS_FROZEN = 'r: borrar  |  c: copiar  |  espacio: volver  |  q: salir'
+INSTRUCTIONS_FROZEN = (
+    'r: borrar  |  s: guardar  |  c: copiar  |  '
+    'espacio: volver  |  q: salir'
+)
 
 
 class ColorRangePicker(Node):
     def __init__(self):
         super().__init__('color_range_picker')
         self.declare_parameter('image_topic', '/image_raw')
+        self.declare_parameter('hue_margin', 5)
+        self.declare_parameter('saturation_margin', 30)
+        self.declare_parameter('value_margin', 40)
+        self.declare_parameter('ranges_file', '')
         self.topic = self.get_parameter('image_topic').value
+        self.hue_margin = int(self.get_parameter('hue_margin').value)
+        self.saturation_margin = int(
+            self.get_parameter('saturation_margin').value
+        )
+        self.value_margin = int(self.get_parameter('value_margin').value)
+        self.ranges_file = self.configured_ranges_file()
 
         self.bridge = CvBridge()
         self.latest = None
@@ -57,6 +80,25 @@ class ColorRangePicker(Node):
         self.get_logger().info(
             f'Escuchando {self.topic}. Espacio para congelar, q para salir.'
         )
+        self.get_logger().info(
+            f'Los rangos HSV se guardarán en {self.ranges_file}.'
+        )
+
+    def configured_ranges_file(self):
+        path = self.get_parameter('ranges_file').value
+        if path:
+            return os.path.expanduser(path)
+
+        config_dir = os.path.join(pkg_dir('lab2'), 'config')
+        path = os.path.join(config_dir, 'hsv_ranges.json')
+        if not os.path.exists(path):
+            pose_list = os.path.join(config_dir, 'pose_list.txt')
+            if os.path.islink(pose_list):
+                path = os.path.join(
+                    os.path.dirname(os.path.realpath(pose_list)),
+                    'hsv_ranges.json',
+                )
+        return path
 
     def image_callback(self, msg):
         try:
@@ -99,15 +141,23 @@ class ColorRangePicker(Node):
             self.get_logger().warn('La región no cubre ningún píxel.')
             return
 
-        self.pairs = pairs
-        mask = build_mask(hsv, pairs)
+        self.pairs = pad_pairs(
+            pairs,
+            hue_margin=self.hue_margin,
+            saturation_margin=self.saturation_margin,
+            value_margin=self.value_margin,
+        )
+        mask = build_mask(hsv, self.pairs)
         mask_view = cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)
         result_view = cv2.bitwise_and(self.frozen, self.frozen, mask=mask)
         separator = np.full((mask.shape[0], 2, 3), 255, dtype=np.uint8)
         self.mask_preview = np.hstack([mask_view, separator, result_view])
 
-        self.clipboard_text = format_hsv_ranges(pairs)
-        self.get_logger().info('Rangos HSV:\n' + self.clipboard_text)
+        self.clipboard_text = format_hsv_ranges(self.pairs)
+        self.get_logger().info(
+            'Rangos HSV con margen de seguridad:\n' + self.clipboard_text
+        )
+        self.save_current()
         self.copy_current()
 
     def toggle_freeze(self):
@@ -136,6 +186,24 @@ class ColorRangePicker(Node):
         except cv2.error:
             pass
         self.mask_window_open = False
+
+    def save_current(self):
+        if not self.pairs:
+            self.get_logger().warn('Todavía no hay rangos para guardar.')
+            return
+
+        try:
+            save_ranges(self.ranges_file, self.pairs)
+        except (OSError, ValueError) as error:
+            self.get_logger().error(
+                f'No se pudieron guardar los rangos en '
+                f'{self.ranges_file}: {error}'
+            )
+            return
+        self.get_logger().info(f'Rangos guardados en {self.ranges_file}')
+        self.get_logger().info(
+            'Reinicia detector_de_objeto.py para cargar los nuevos rangos.'
+        )
 
     def copy_current(self):
         if not self.clipboard_text:
@@ -214,6 +282,9 @@ class ColorRangePicker(Node):
             lines = []
             if self.clipboard_text:
                 lines.extend(self.clipboard_text.splitlines())
+                lines.append(
+                    f'Guardado: {os.path.basename(self.ranges_file)}'
+                )
             else:
                 lines.append('Dibuja el borde del objeto con click izquierdo')
             lines.append(INSTRUCTIONS_FROZEN)
@@ -273,6 +344,8 @@ def main(args=None):
                 node.toggle_freeze()
             elif key == ord('r'):
                 node.reset_selection()
+            elif key == ord('s'):
+                node.save_current()
             elif key == ord('c'):
                 node.copy_current()
     except (KeyboardInterrupt, ExternalShutdownException):

@@ -1,10 +1,16 @@
 """Rangos HSV calculados a partir de una región dibujada sobre una imagen."""
 
+import json
+import os
+
 import cv2
 import numpy as np
 
 HUE_MAX = 179
 """Valor máximo de H en OpenCV (el tono va de 0 a 180)."""
+
+CHANNEL_MAX = 255
+"""Valor máximo de S y V en OpenCV."""
 
 
 def polygon_mask(shape, points):
@@ -71,6 +77,44 @@ def mask_ranges(hsv_image, points):
     ]
 
 
+def pad_pairs(pairs, hue_margin=5, saturation_margin=30, value_margin=40):
+    """Amplía los rangos HSV para tolerar cambios de iluminación.
+
+    H se trata como circular (0 a 179), así que un margen que cruza el 0 se
+    divide en dos rangos. S y V se recortan al rango 0 a 255.
+    """
+    padded = []
+    for lower, upper in pairs:
+        s_min = max(0, int(lower[1]) - saturation_margin)
+        s_max = min(CHANNEL_MAX, int(upper[1]) + saturation_margin)
+        v_min = max(0, int(lower[2]) - value_margin)
+        v_max = min(CHANNEL_MAX, int(upper[2]) + value_margin)
+
+        for h_min, h_max in _padded_hues(
+            int(lower[0]), int(upper[0]), int(hue_margin)
+        ):
+            padded.append(
+                (
+                    np.array([h_min, s_min, v_min], dtype=np.uint8),
+                    np.array([h_max, s_max, v_max], dtype=np.uint8),
+                )
+            )
+    return padded
+
+
+def _padded_hues(h_min, h_max, margin):
+    """Tramos de H que cubren ``[h_min - margin, h_max + margin]``."""
+    start = h_min - max(0, margin)
+    end = h_max + max(0, margin)
+    if end - start + 1 >= HUE_MAX + 1:
+        return [(0, HUE_MAX)]
+    if start < 0:
+        return [(0, end), (HUE_MAX + 1 + start, HUE_MAX)]
+    if end > HUE_MAX:
+        return [(start, HUE_MAX), (0, end - HUE_MAX - 1)]
+    return [(start, end)]
+
+
 def build_mask(hsv_image, pairs):
     """Máscara binaria que combina todos los rangos HSV recibidos."""
     mask = np.zeros(hsv_image.shape[:2], dtype=np.uint8)
@@ -92,6 +136,55 @@ def format_hsv_ranges(pairs):
             lines.append(f'upper{index} = np.array({_as_list(upper)})')
         lines.append('# combina las mascaras con cv2.bitwise_or')
     return '\n'.join(lines)
+
+
+def save_ranges(path, pairs):
+    """Guarda el primer rango HSV en path con json.dump."""
+    if not pairs:
+        raise ValueError('No hay rangos HSV para guardar')
+
+    lower, upper = pairs[0]
+    data = {
+        'lower': _as_int_list(lower),
+        'upper': _as_int_list(upper),
+    }
+    directory = os.path.dirname(os.path.abspath(path))
+    os.makedirs(directory, exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as ranges_file:
+        json.dump(data, ranges_file, indent=2)
+        ranges_file.write('\n')
+    return data
+
+
+def load_ranges(path):
+    """Lee un archivo JSON con las claves ``lower`` y ``upper``."""
+    with open(path, encoding='utf-8') as ranges_file:
+        data = json.load(ranges_file)
+
+    try:
+        lower = _to_hsv(data['lower'])
+        upper = _to_hsv(data['upper'])
+    except (KeyError, TypeError, ValueError) as error:
+        raise ValueError(f'Rango HSV inválido en {path}: {error}') from error
+    if np.any(lower > upper):
+        raise ValueError(f'Rango HSV inválido en {path}: lower > upper')
+    return [(lower, upper)]
+
+
+def _to_hsv(values):
+    if not isinstance(values, (list, tuple)) or len(values) != 3:
+        raise ValueError('se esperaban tres valores HSV')
+
+    hsv = [int(value) for value in values]
+    if not 0 <= hsv[0] <= HUE_MAX:
+        raise ValueError('H debe estar entre 0 y 179')
+    if any(value < 0 or value > CHANNEL_MAX for value in hsv[1:]):
+        raise ValueError('S y V deben estar entre 0 y 255')
+    return np.array(hsv, dtype=np.uint8)
+
+
+def _as_int_list(values):
+    return [int(value) for value in values]
 
 
 def _as_list(values):

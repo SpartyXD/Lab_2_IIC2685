@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 from collections import deque
+import json
+import os
+
 import rclpy
-import message_filters
 import numpy as np
+from ament_index_python.packages import get_package_share_directory as pkg_dir
 from rclpy.node import Node
 from std_msgs.msg import Int16, Bool
 
@@ -15,9 +18,23 @@ DISTANCIA_MAX = 0.70
 SHOW_MASKS = True
 SHOW_IMG = True
 
+
 class ObjectDetector(Node):
     def __init__( self ):
         super().__init__('Obstacle_detector')
+
+        ranges_path = os.path.join(
+            pkg_dir('lab2'), 'config', 'hsv_ranges.json'
+        )
+        with open(ranges_path, encoding='utf-8') as ranges_file:
+            ranges = json.load(ranges_file)
+
+        self.lower_blue = np.array(ranges['lower'], dtype=np.uint8)
+        self.upper_blue = np.array(ranges['upper'], dtype=np.uint8)
+        self.get_logger().info(
+            f'Rangos HSV cargados desde {ranges_path}: '
+            f'{self.lower_blue.tolist()} - {self.upper_blue.tolist()}'
+        )
 
         self.queue_rgb = deque(maxlen=2)
         self.queue_depth = deque(maxlen=2)
@@ -58,10 +75,6 @@ class ObjectDetector(Node):
         # Create a detector with the parameters
         self.detector = cv2.SimpleBlobDetector_create(blob_params)
 
-
-        self.lower_blue = np.array([97,134,129] )
-        self.upper_blue = np.array([121,255,253])
-
     def rgb_callback(self, rgb_data):
         self.get_logger().info("Imagen RGB Recibida")
         self.queue_rgb.append(rgb_data)
@@ -94,7 +107,9 @@ class ObjectDetector(Node):
         alto, ancho = depth_array.shape
 
         mask_distancia = self.distancia_valida(depth_array)
-        mask_color = cv2.inRange(hsv_array, self.lower_blue, self.upper_blue)
+        mask_color = cv2.inRange(
+            hsv_array, self.lower_blue, self.upper_blue
+        )
 
         imagen_distancia_valida = cv2.bitwise_and(bgr_array, bgr_array, mask= mask_distancia)
         imagen_color_valido= cv2.bitwise_and(bgr_array, bgr_array, mask= mask_distancia & mask_color)

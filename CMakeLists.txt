@@ -15,6 +15,7 @@ install(PROGRAMS
   nodes/dead_reckoning_nav.py
   nodes/pose_loader.py
   nodes/color_range_picker.py
+  nodes/detector_de_objeto.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
