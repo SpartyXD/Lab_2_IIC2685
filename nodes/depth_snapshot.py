@@ -164,6 +164,31 @@ class DepthSnapshot(Node):
         )
         return vis
 
+    def save_matrix_txt(self, path):
+        """Escribe la matriz cruda de profundidad en texto legible."""
+        depth = self.depth_raw
+        if depth.dtype.kind == 'f':
+            precision = 9 if depth.dtype.itemsize <= 4 else 17
+            fmt = f'%.{precision}g'
+        elif depth.dtype.kind in 'iu':
+            fmt = '%d'
+        else:
+            fmt = '%s'
+
+        header = '\n'.join([
+            f'topic: {self.depth_topic}',
+            f'encoding: {self.depth_encoding}',
+            f'dtype: {depth.dtype}',
+            f'shape: {depth.shape}',
+            f'unidades: {self.unit_label()}',
+            'Una fila por fila de imagen; valores crudos sin convertir.',
+            'NaN/Inf se escriben como nan/inf.',
+        ])
+        np.savetxt(
+            path, depth, fmt=fmt, delimiter=' ', header=header,
+            comments='# ',
+        )
+
     def mouse_cb(self, event, x, y, flags, param):
         if event != cv2.EVENT_LBUTTONDOWN or self.depth_raw is None:
             return
@@ -206,6 +231,7 @@ class DepthSnapshot(Node):
 
         cv2.imwrite(os.path.join(folder, 'color.png'), self.color_bgr)
         np.save(os.path.join(folder, 'depth.npy'), self.depth_raw)
+        self.save_matrix_txt(os.path.join(folder, 'depth.txt'))
         cv2.imwrite(
             os.path.join(folder, 'depth_vis.png'),
             self.depth_visualization(),
