@@ -2,12 +2,22 @@
 import rclpy
 from rclpy.node import Node
 from std_msgs.msg import Float64
+from geometry_msgs.msg import Vector3
 from rclpy.executors import MultiThreadedExecutor
 from dead_reckoning_nav import INFTY
 import math
 
 #Le puse sleep pq se mew suscribia antes de tiempo y como q me lo bugeaba xd
 import time
+
+VEL_KP = 0.6
+VEL_KI = 0.01
+VEL_KD = 0.0
+
+ANGLE_KP = 0.3
+ANGLE_KI = 0.01
+ANGLE_KD = 0.0
+
 
 class PIDController( Node ):
   def __init__(self, name, setpoint_topic, measures_topic, effort_topic, max_effort, kp, ki = 0, kd = 0, angular=False):
@@ -26,10 +36,9 @@ class PIDController( Node ):
     self.last_error = 0
     self.last_check = 0
 
-    self.dist_set_point_sub = self.create_subscription( Float64, setpoint_topic, self.setpoint_cb, 1 )
-    self.dist_state_sub = self.create_subscription( Float64, measures_topic, self.state_cb, 1 )
-    self.actuation_pub = self.create_publisher( Float64, effort_topic, 1 )
-
+    self.dist_set_point_sub = self.create_subscription( Float64, setpoint_topic, self.setpoint_cb, 1)
+    self.dist_state_sub = self.create_subscription( Float64, measures_topic, self.state_cb, 1)
+    self.actuation_pub = self.create_publisher( Float64, effort_topic, 1)
 
   def check_connections(self):
       #Loop para q no se bugeen los one shot
@@ -109,8 +118,8 @@ class PIDController( Node ):
 
 def main():
     rclpy.init()
-    velocity_pid = PIDController("Velocity_controller", "/velocity_setpoint", "/velocity_measure", "/velocity_effort", max_effort=0.2, kp=0.6, ki=0.01)
-    angle_pid = PIDController("Angle_controller", "/angle_setpoint", "/angle_measure", "/angle_effort", max_effort=1.0, kp=0.3, ki=0.01, angular=True)
+    velocity_pid = PIDController("Velocity_controller", "/velocity_setpoint", "/velocity_measure", "/velocity_effort", max_effort=0.2, kp=VEL_KP, ki=VEL_KI, kd=VEL_KD)
+    angle_pid = PIDController("Angle_controller", "/angle_setpoint", "/angle_measure", "/angle_effort", max_effort=1.0, kp=ANGLE_KP, ki=ANGLE_KI, kd=ANGLE_KD, angular=True)
 
     #le agregamos el executor pq con spin normal se nos bugeaba :c
     executor = MultiThreadedExecutor()
