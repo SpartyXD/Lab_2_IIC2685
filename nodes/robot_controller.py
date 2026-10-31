@@ -10,10 +10,12 @@ import math
 #Le puse sleep pq se mew suscribia antes de tiempo y como q me lo bugeaba xd
 import time
 
+MAX_VEL_EFFORT = 0.2
 VEL_KP = 0.6
 VEL_KI = 0.01
 VEL_KD = 0.0
 
+MAX_ANGLE_EFFORT = 1.0
 ANGLE_KP = 0.3
 ANGLE_KI = 0.01
 ANGLE_KD = 0.0
@@ -118,8 +120,8 @@ class PIDController( Node ):
 
 def main():
     rclpy.init()
-    velocity_pid = PIDController("Velocity_controller", "/velocity_setpoint", "/velocity_measure", "/velocity_effort", max_effort=0.2, kp=VEL_KP, ki=VEL_KI, kd=VEL_KD)
-    angle_pid = PIDController("Angle_controller", "/angle_setpoint", "/angle_measure", "/angle_effort", max_effort=1.0, kp=ANGLE_KP, ki=ANGLE_KI, kd=ANGLE_KD, angular=True)
+    velocity_pid = PIDController("Velocity_controller", "/velocity_setpoint", "/velocity_measure", "/velocity_effort", max_effort=MAX_VEL_EFFORT, kp=VEL_KP, ki=VEL_KI, kd=VEL_KD)
+    angle_pid = PIDController("Angle_controller", "/angle_setpoint", "/angle_measure", "/angle_effort", max_effort=MAX_ANGLE_EFFORT, kp=ANGLE_KP, ki=ANGLE_KI, kd=ANGLE_KD, angular=True)
 
     #le agregamos el executor pq con spin normal se nos bugeaba :c
     executor = MultiThreadedExecutor()
