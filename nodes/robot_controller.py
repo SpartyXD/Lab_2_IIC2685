@@ -11,13 +11,13 @@ import math
 import time
 
 MAX_VEL_EFFORT = 0.2
-VEL_KP = 0.6
-VEL_KI = 0.01
+VEL_KP = 1.0 #1.0
+VEL_KI = 0.3 #(1.0, 0.3)
 VEL_KD = 0.0
 
 MAX_ANGLE_EFFORT = 1.0
-ANGLE_KP = 0.3
-ANGLE_KI = 0.01
+ANGLE_KP = 0.3 #0.3
+ANGLE_KI = 0.2 #(0.3, 0.2)
 ANGLE_KD = 0.0
 
 

@@ -10,9 +10,8 @@ from threading import Thread
 #Ocuparemos el molde que nos dio el Nacho, crack
 
 INFTY = 1e9 #Le mandaremos esto al controlador pa que se quede quietito si no quiero pescar el setpoint
-POSE_EPSILON = 0.1 #epsilon de pose
-ANGLE_EPSILON = 0.1 #epsilon de angulo
-UMBRAL_TRAMO = 0.15 
+POSE_EPSILON = 0.03 #epsilon de pose
+ANGLE_EPSILON = 0.05 #epsilon de angulo
 ESCALA_TIEMPO = 0.5
 
 def normalizar_angulo(a):
@@ -198,7 +197,7 @@ class DeadReckoningNav(Node):
  
         #Eje X
         x_diff = x_goal - x
-        if abs(x_diff) > UMBRAL_TRAMO:
+        if abs(x_diff) > POSE_EPSILON:
             rot = normalizar_angulo(self.reapuntar(x_diff) - th)
             if abs(rot) > ANGLE_EPSILON:
                 displacement_list.append((0.0, rot))
@@ -208,7 +207,7 @@ class DeadReckoningNav(Node):
  
         #Eje Y
         y_diff = y_goal - y
-        if abs(y_diff) > UMBRAL_TRAMO:
+        if abs(y_diff) > POSE_EPSILON:
             rot = normalizar_angulo(self.reapuntar(y_diff, vertical=True) - th)
             if abs(rot) > ANGLE_EPSILON:
                 displacement_list.append((0.0, rot))
