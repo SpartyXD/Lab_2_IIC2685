@@ -17,6 +17,7 @@ install(PROGRAMS
   nodes/depth_snapshot.py
   nodes/detector_de_objeto_tester.py 
   nodes/detector_de_objeto.py
+  nodes/detector_de_objeto_v2.py
   nodes/follow_the_carrot.py
   nodes/hsv_ranges.py
   nodes/robot_controller.py
