@@ -2,9 +2,9 @@
 
   <!-- Params -->
   <arg name="path_file" default="path_sqrt.txt"/>
-  <arg name="run_name" default="path_sqrt  "/>
-  <arg name="lookahead" default="0.3"/>
-  <arg name="kp" default="1.0"/>
+  <arg name="run_name" default="path_sqrt"/>
+  <arg name="lookahead" default="0.05"/>
+  <arg name="kp" default="3.0"/>
   <arg name="ki" default="0.01"/>
   <arg name="kd" default="0.0"/>
 
