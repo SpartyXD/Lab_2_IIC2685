@@ -50,8 +50,8 @@ class ColorRangePicker(Node):
         super().__init__('color_range_picker')
         self.declare_parameter('image_topic', '/image_raw')
         self.declare_parameter('hue_margin', 5)
-        self.declare_parameter('saturation_margin', 30)
-        self.declare_parameter('value_margin', 40)
+        self.declare_parameter('saturation_margin', 20)
+        self.declare_parameter('value_margin', 30)
         self.declare_parameter('ranges_file', '')
         self.topic = self.get_parameter('image_topic').value
         self.hue_margin = int(self.get_parameter('hue_margin').value)
