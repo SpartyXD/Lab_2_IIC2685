@@ -24,6 +24,7 @@ install(PROGRAMS
   nodes/seguidor_de_objeto.py
   nodes/trajectory_logger.py
   nodes/path_loader.py
+  nodes/trajectory_viewer.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
