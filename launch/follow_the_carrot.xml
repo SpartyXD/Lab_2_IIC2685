@@ -1,7 +1,32 @@
 <launch>
+  <!-- Params -->
+  <arg name="path_file" default="path_sin.txt"/>
+  <arg name="run_name" default="path_sin"/>
+  <arg name="lookahead" default="0.3"/>
+  <arg name="kp" default="1.0"/>
+  <arg name="ki" default="0.0"/>
+  <arg name="kd" default="0.0"/>
+
+  <!-- Dependencies -->
   <include file="$(find-pkg-share very_simple_robot_simulator)/launch/minimal_simulator_py.xml" />
   <include file="$(find-pkg-share very_simple_robot_simulator)/launch/openni_simulator_py.xml" />
   <include file="$(find-pkg-share very_simple_robot_simulator)/launch/world_state.xml" />
+  
+  <!-- carrot_node -->
+  <node pkg="lab2" exec="follow_the_carrot.py" name="follow_the_carrot" output="screen">
+    <param name="lookahead" value="$(var lookahead)"/>
+    <param name="kp" value="$(var kp)"/>
+    <param name="ki" value="$(var ki)"/>
+    <param name="kd" value="$(var kd)"/>
+  </node>
 
-  <node pkg="lab2" exec="follow_the_carrot.py" name="FollowTheCarrot" output="screen" />
+  <!-- path_node -->
+  <node pkg="lab2" exec="path_loader.py" name="path_loader" output="screen">
+    <param name="path_file" value="$(var path_file)"/>
+  </node>
+  
+  <!-- plot_node -->
+  <node pkg="lab2" exec="trajectory_viewer.py" name="trajectory_viewer" output="screen">
+    <param name="run_name" value="$(var run_name)"/>
+  </node>
 </launch>
