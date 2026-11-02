@@ -15,6 +15,7 @@ from cv_bridge import CvBridge
 
 DISTANCIA_MIN = 100
 DISTANCIA_MAX = 1500
+ESPESOR_MAX = 60
 SHOW_MASKS = True
 SHOW_IMG = True
 
@@ -118,15 +119,24 @@ class ObjectDetector(Node):
         x=0
         detected = False
         keypoints = self.detector.detect(mask_distancia & mask_color)
-        if keypoints:
-            blob = max(keypoints, key=lambda kp: kp.size)
+        for blob in sorted(keypoints, key=lambda kp: kp.size, reverse=True):
+            radio = max(int(blob.size * 0.3), 2)
             coords = tuple(map(int, blob.pt))
+            z = depth_array[
+                max(coords[1]-radio, 0):coords[1]+radio,
+                max(coords[0]-radio, 0):coords[0]+radio
+            ].astype(np.float32)
+            z = z[(z >= DISTANCIA_MIN) & (z <= DISTANCIA_MAX)]
+            if z.size < 30:
+                continue
+            if np.percentile(z, 90) - np.percentile(z, 10) > ESPESOR_MAX:
+                continue
             x =  int(coords[0]-ancho/2)
             detected = True
             cv2.putText(bgr_array, str(x), coords, 1, 2, (0, 0, 0),1)
             cv2.line(bgr_array, (int(ancho/2), coords[1]), coords, (0, 0, 0), 2)
+            break
         cv2.line(bgr_array, (int(ancho/2), 0), (int(ancho/2), alto), (0, 0, 0), 2)
-
 
         pos_x = Int16()
         square_detected = Bool()
