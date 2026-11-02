@@ -1,7 +1,7 @@
 <launch>
   <!-- Params -->
   <arg name="path_file" default="path_sin.txt"/>
-  <arg name="run_name" default="path_sin"/>
+  <arg name="run_name" default="path_sin  "/>
   <arg name="lookahead" default="0.3"/>
   <arg name="kp" default="1.0"/>
   <arg name="ki" default="0.0"/>
@@ -24,7 +24,7 @@
   <node pkg="lab2" exec="path_loader.py" name="path_loader" output="screen">
     <param name="path_file" value="$(var path_file)"/>
   </node>
-  
+
   <!-- plot_node -->
   <node pkg="lab2" exec="trajectory_viewer.py" name="trajectory_viewer" output="screen">
     <param name="run_name" value="$(var run_name)"/>
