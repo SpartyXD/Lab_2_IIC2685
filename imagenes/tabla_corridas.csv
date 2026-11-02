@@ -1,0 +1,2 @@
+ruta,corrida,lookahead,kp,ki,kd,mse_m2,rmse_m,max_m,tiempo_s,archivo_csv
+path_sqrt,path_sqrt_20261101_235422,0.0,0.0,0.0,0.0,0.127593,0.3572,1.4142,85.1,path_sqrt_20261101_235422.csv

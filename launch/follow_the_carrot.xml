@@ -1,10 +1,11 @@
 <launch>
+
   <!-- Params -->
-  <arg name="path_file" default="path_sin.txt"/>
-  <arg name="run_name" default="path_sin  "/>
+  <arg name="path_file" default="path_sqrt.txt"/>
+  <arg name="run_name" default="path_sqrt  "/>
   <arg name="lookahead" default="0.3"/>
   <arg name="kp" default="1.0"/>
-  <arg name="ki" default="0.0"/>
+  <arg name="ki" default="0.01"/>
   <arg name="kd" default="0.0"/>
 
   <!-- Dependencies -->
@@ -29,4 +30,5 @@
   <node pkg="lab2" exec="trajectory_viewer.py" name="trajectory_viewer" output="screen">
     <param name="run_name" value="$(var run_name)"/>
   </node>
+
 </launch>
