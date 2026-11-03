@@ -29,6 +29,10 @@
   <!-- plot_node -->
   <node pkg="lab2" exec="trajectory_viewer.py" name="trajectory_viewer" output="screen">
     <param name="run_name" value="$(var run_name)"/>
+    <param name="lookahead" value="$(var lookahead)"/>
+    <param name="kp" value="$(var kp)"/>
+    <param name="ki" value="$(var ki)"/>
+    <param name="kd" value="$(var kd)"/>
   </node>
 
 </launch>

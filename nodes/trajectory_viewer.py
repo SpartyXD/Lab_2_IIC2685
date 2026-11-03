@@ -1,31 +1,23 @@
 #!/usr/bin/env python3
-"""Ventana en vivo y analisis de error para Follow The Carrot.
+"""Ventana en vivo para Follow The Carrot.
 
-Mientras corre el robot dibuja:
-  - a la izquierda: ruta original (gris), rastro real (azul), robot y
-    zanahoria (rojo),
-  - a la derecha: distancia del robot a la ruta en el tiempo.
+Dibuja la ruta original (gris), el rastro real (azul), el robot y la
+zanahoria (rojo). En el titulo muestra dos errores:
+  - ECM total: todo el recorrido del robot.
+  - ECM desde la carrot: desde que la zanahoria empieza a moverse, asi no
+    cuenta el tramo desde donde parte el robot hasta la ruta.
+ECM = promedio de (distancia minima del robot a la ruta)^2.
 
-Al cerrar la ventana (o con Ctrl+C) guarda en output_dir:
-  <run_name>_<fecha>.csv     columnas t, x, y, d (d = distancia a la ruta)
-  <run_name>_<fecha>.png     trayectoria real vs original + error en el tiempo
-  tabla_corridas.csv         una fila por corrida: parametros y error
-  mejor_<ruta>.png           copia del grafico si es la mejor corrida de esa ruta
-  resumen_errores.png        las mejores corridas de todas las rutas juntas
-
-Error: para cada punto real, distancia minima a la polilinea de la ruta.
-MSE = promedio de esas distancias al cuadrado; RMSE = su raiz.
+Al cerrar la ventana (o con Ctrl+C) guarda UNA imagen:
+    <output_dir>/<run_name>_<fecha>.png
 
 Parametros:
-    run_name    nombre de la corrida. Debe empezar con el nombre del txt de la
-                ruta (por ejemplo path_sin_L03_kp10) para asociarla a su ruta.
+    run_name    nombre de la corrida (va en el nombre de la imagen)
     output_dir  carpeta de salida. Por defecto 'imagenes', dentro del
                 proyecto (src/lab2/imagenes). Una ruta relativa se interpreta
                 desde la raiz del proyecto; una absoluta se usa tal cual.
-    lookahead, kp, ki, kd   solo informativos: se anotan en la tabla.
+    lookahead, kp, ki, kd   solo informativos: salen en el titulo.
 """
-import csv
-import glob
 import math
 import os
 from datetime import datetime
@@ -35,25 +27,20 @@ import numpy as np
 import rclpy
 from ament_index_python.packages import get_package_prefix
 from geometry_msgs.msg import PointStamped
+from matplotlib.figure import Figure
 from nav_msgs.msg import Odometry, Path
 from rcl_interfaces.msg import ParameterDescriptor
 from rclpy.node import Node
 from rclpy.signals import SignalHandlerOptions
 
-PASO_MIN = 0.01   # m minimos entre puntos del rastro
-REFRESCO = 0.1    # s entre redibujados
+PASO_MIN = 0.01       # m minimos entre puntos del rastro
+REFRESCO = 0.1        # s entre redibujados
+CARROT_MOVIO = 0.01   # m que debe moverse la zanahoria para decir que partio
 PARAMETROS = ('lookahead', 'kp', 'ki', 'kd')
-COLUMNAS = ['ruta', 'corrida', 'lookahead', 'kp', 'ki', 'kd',
-            'mse_m2', 'rmse_m', 'max_m', 'tiempo_s', 'archivo_csv']
 
 
-# Utilidades
 def carpeta_proyecto():
-    """Raiz del paquete lab2 en src/ (donde estan package.xml y nodes/).
-
-    Funciona con colcon build normal y con --symlink-install. Si no la
-    encuentra, usa la carpeta desde donde se lanzo el nodo.
-    """
+    """Raiz del paquete lab2 en src/ (donde estan package.xml y nodes/)."""
     aqui = os.path.dirname(os.path.realpath(__file__))
     candidatos = [os.path.dirname(aqui)]
     try:
@@ -68,20 +55,6 @@ def carpeta_proyecto():
     return os.getcwd()
 
 
-def cargar_ruta(archivo):
-    puntos = []
-    with open(archivo, encoding='utf-8') as f:
-        for linea in f:
-            partes = linea.strip().strip('()').replace(',', ' ').split()
-            try:
-                nums = [float(p) for p in partes]
-            except ValueError:
-                continue
-            if len(nums) >= 2:
-                puntos.append(nums[:2])
-    return np.array(puntos, dtype=float)
-
-
 def distancia_a_ruta(a, ab, largo2, p):
     """Distancia minima del punto p a la polilinea (segmentos a -> a + ab)."""
     t = np.clip(np.einsum('ij,ij->i', p - a, ab) / largo2, 0.0, 1.0)
@@ -89,51 +62,11 @@ def distancia_a_ruta(a, ab, largo2, p):
     return float(np.sqrt(np.min(np.sum((p - proy) ** 2, axis=1))))
 
 
-def metricas_desde(t, d):
-    d = np.asarray(d, dtype=float)
-    mse = float(np.mean(d ** 2))
-    return {
-        'mse': mse,
-        'rmse': math.sqrt(mse),
-        'max': float(d.max()),
-        'dur': float(t[-1] - t[0]),
-    }
-
-
-def leer_tabla(archivo):
-    if not os.path.isfile(archivo):
-        return []
-    with open(archivo, newline='', encoding='utf-8') as f:
-        return [fila for fila in csv.DictReader(f) if fila.get('archivo_csv')]
-
-
-# Graficos
-def dibujar_trayectoria(ax, titulo, ruta, xy, m, leyenda=False):
-    ax.plot(ruta[:, 0], ruta[:, 1], '--', color='gray', lw=2,
-            label='Trayectoria original')
-    ax.plot(xy[:, 0], xy[:, 1], '-', color='tab:blue', lw=1.5,
-            label='Trayectoria real')
-    ax.plot(*xy[0], 'o', color='tab:green', label='Inicio')
-    ax.plot(*xy[-1], 's', color='tab:red', label='Fin')
-    ax.set_title(f'{titulo}\nMSE = {m["mse"]:.4f} m$^2$  '
-                 f'(RMSE = {m["rmse"]:.3f} m)')
-    ax.set_xlabel('X [m]')
-    ax.set_ylabel('Y [m]')
-    ax.set_aspect('equal')
-    ax.grid(True)
-    if leyenda:
-        ax.legend(fontsize=8, loc='best')
-
-
-def dibujar_error(ax, t, d, m):
-    ax.plot(t, d, color='tab:red', lw=1.2)
-    ax.axhline(m['rmse'], color='k', ls='--', lw=1,
-               label=f'RMSE = {m["rmse"]:.3f} m')
-    ax.set_title(f'Error en el tiempo (max = {m["max"]:.3f} m)')
-    ax.set_xlabel('Tiempo [s]')
-    ax.set_ylabel('Distancia a la ruta [m]')
-    ax.grid(True)
-    ax.legend(fontsize=8, loc='best')
+def texto_ecm(nombre, d):
+    if len(d) == 0:
+        return f'{nombre}: sin datos'
+    mse = float(np.mean(np.square(d)))
+    return f'{nombre} = {mse:.4f} m$^2$ (RMSE = {math.sqrt(mse):.3f} m)'
 
 
 class TrajectoryViewer(Node):
@@ -150,62 +83,35 @@ class TrajectoryViewer(Node):
             n: float(self.get_parameter(n).value) for n in PARAMETROS
         }
 
-        self.proyecto = carpeta_proyecto()
-        self.config_dir = os.path.join(self.proyecto, 'config')
         salida = os.path.expanduser(self.get_parameter('output_dir').value)
         if not os.path.isabs(salida):
-            salida = os.path.join(self.proyecto, salida)
+            salida = os.path.join(carpeta_proyecto(), salida)
         self.output_dir = salida
-        self.get_logger().info(f'Las corridas se guardan en {self.output_dir}')
+        self.get_logger().info(f'La imagen se guarda en {self.output_dir}')
 
-        # Nombres de rutas conocidas (config/path_*.txt)
-        self.rutas_conocidas = sorted(
-            os.path.splitext(os.path.basename(p))[0]
-            for p in glob.glob(os.path.join(self.config_dir, 'path_*.txt'))
-        )
-
-        # Ruta actual y segmentos precalculados
+        # Ruta y sus segmentos
         self.ruta = None
         self.seg_a = None
         self.seg_ab = None
         self.seg_l2 = None
 
-        # Rastro real: (t, x, y), distancia a la ruta y suma de d^2
+        # Rastro real, distancia a la ruta y tiempo de cada punto
         self.traza = []
         self.dist = []
-        self.suma_d2 = 0.0
+        self.tiempos = []
+
+        # Zanahoria: posicion actual, primera posicion y punto del rastro
+        # en que empezo a moverse
         self.carrot = None
+        self.carrot_ini = None
+        self.i_carrot = None
 
         self.create_subscription(Path, 'nav_plan', self.path_cb, 10)
         self.create_subscription(Odometry, '/odom', self.odom_cb, 10)
         self.create_subscription(PointStamped, '/carrot', self.carrot_cb, 10)
 
         plt.ion()
-        self.fig, (self.ax, self.ax_err) = plt.subplots(
-            1, 2, figsize=(14, 6)
-        )
-        (self.l_ruta,) = self.ax.plot([], [], '--', color='gray', lw=2,
-                                      label='Trayectoria original')
-        (self.l_traza,) = self.ax.plot([], [], '-', color='tab:blue', lw=1.5,
-                                       label='Trayectoria real')
-        (self.p_robot,) = self.ax.plot([], [], 'o', color='tab:blue', ms=9,
-                                       label='Robot')
-        (self.p_carrot,) = self.ax.plot([], [], '*', color='tab:red', ms=14,
-                                        label='Zanahoria')
-        self.ax.set_xlabel('X [m]')
-        self.ax.set_ylabel('Y [m]')
-        self.ax.set_aspect('equal')
-        self.ax.grid(True)
-        self.ax.legend(loc='best', fontsize=8)
-        self.ax.set_title(f'Follow The Carrot: {self.run_name}')
-
-        (self.l_err,) = self.ax_err.plot([], [], color='tab:red', lw=1.2)
-        self.l_rmse = self.ax_err.axhline(0.0, color='k', ls='--', lw=1)
-        self.ax_err.set_xlabel('Tiempo [s]')
-        self.ax_err.set_ylabel('Distancia a la ruta [m]')
-        self.ax_err.set_title('Error en el tiempo')
-        self.ax_err.grid(True)
-        self.fig.tight_layout()
+        self.fig, (self.ax, self.ax_err) = plt.subplots(1, 2, figsize=(14, 6))
 
     # Callbacks
     def path_cb(self, msg):
@@ -218,10 +124,13 @@ class TrajectoryViewer(Node):
         self.seg_l2 = np.maximum(
             np.einsum('ij,ij->i', self.seg_ab, self.seg_ab), 1e-12
         )
-        # Una ruta nueva empieza un rastro nuevo
+        # Una ruta nueva empieza todo de nuevo
         self.traza = []
         self.dist = []
-        self.suma_d2 = 0.0
+        self.tiempos = []
+        self.carrot = None
+        self.carrot_ini = None
+        self.i_carrot = None
         self.get_logger().info(f'Ruta recibida ({len(pts)} puntos)')
 
     def odom_cb(self, msg):
@@ -230,192 +139,118 @@ class TrajectoryViewer(Node):
         x = msg.pose.pose.position.x
         y = msg.pose.pose.position.y
         if self.traza and math.hypot(
-            x - self.traza[-1][1], y - self.traza[-1][2]
+            x - self.traza[-1][0], y - self.traza[-1][1]
         ) < PASO_MIN:
             return
-
-        t = self.get_clock().now().nanoseconds / 1e9
-        d = distancia_a_ruta(
+        self.tiempos.append(self.get_clock().now().nanoseconds / 1e9)
+        self.traza.append((x, y))
+        self.dist.append(distancia_a_ruta(
             self.seg_a, self.seg_ab, self.seg_l2, np.array([x, y])
-        )
-        self.traza.append((t, x, y))
-        self.dist.append(d)
-        self.suma_d2 += d * d
+        ))
 
     def carrot_cb(self, msg):
-        self.carrot = (msg.point.x, msg.point.y)
+        c = (msg.point.x, msg.point.y)
+        self.carrot = c
+        if self.carrot_ini is None:
+            self.carrot_ini = c
+        elif self.i_carrot is None and math.hypot(
+            c[0] - self.carrot_ini[0], c[1] - self.carrot_ini[1]
+        ) > CARROT_MOVIO:
+            # Desde el proximo punto del rastro cuenta el segundo error
+            self.i_carrot = len(self.traza)
+            self.get_logger().info('La carrot empezo a moverse: mido el ECM desde aqui')
 
-    # Dibujo en vivo
-    def metricas_en_vivo(self):
-        n = len(self.dist)
-        if n < 2:
-            return None
-        mse = self.suma_d2 / n
-        return {'mse': mse, 'rmse': math.sqrt(mse), 'max': max(self.dist)}
+    # Dibujo (sirve para la ventana en vivo y para la imagen final)
+    def titulo(self):
+        p = self.parametros
+        t = (f'Follow The Carrot: {self.run_name}\n'
+             f'lookahead={p["lookahead"]:g}  kp={p["kp"]:g}  '
+             f'ki={p["ki"]:g}  kd={p["kd"]:g}\n')
+        t += texto_ecm('ECM total', self.dist)
+        if self.i_carrot is None:
+            t += '\nECM desde la carrot: aun no empieza'
+        else:
+            t += '\n' + texto_ecm('ECM desde la carrot',
+                                  self.dist[self.i_carrot:])
+        return t
 
-    def refresh(self):
-        if self.ruta is not None:
-            self.l_ruta.set_data(self.ruta[:, 0], self.ruta[:, 1])
-
-        titulo = f'Follow The Carrot: {self.run_name}'
-        if self.traza:
-            arr = np.array(self.traza)
-            self.l_traza.set_data(arr[:, 1], arr[:, 2])
-            self.p_robot.set_data([arr[-1, 1]], [arr[-1, 2]])
-            self.l_err.set_data(arr[:, 0] - arr[0, 0], self.dist)
-
-            m = self.metricas_en_vivo()
-            if m:
-                self.l_rmse.set_ydata([m['rmse'], m['rmse']])
-                titulo += (f'\nMSE = {m["mse"]:.4f} m$^2$  '
-                           f'(RMSE = {m["rmse"]:.3f} m)')
-            self.ax_err.relim()
-            self.ax_err.autoscale_view()
-        self.ax.set_title(titulo)
-
-        if self.carrot is not None:
-            self.p_carrot.set_data([self.carrot[0]], [self.carrot[1]])
-
-        # Limites de la trayectoria: ruta + rastro + margen
+    def pintar(self, ax):
         puntos = []
         if self.ruta is not None:
+            ax.plot(self.ruta[:, 0], self.ruta[:, 1], '--', color='gray',
+                    lw=2, label='Trayectoria original')
             puntos.append(self.ruta)
         if self.traza:
-            puntos.append(np.array(self.traza)[:, 1:3])
+            xy = np.array(self.traza)
+            ax.plot(xy[:, 0], xy[:, 1], '-', color='tab:blue', lw=1.5,
+                    label='Trayectoria real')
+            ax.plot(xy[-1, 0], xy[-1, 1], 'o', color='tab:blue', ms=9,
+                    label='Robot')
+            if self.i_carrot is not None and self.i_carrot < len(xy):
+                ax.plot(xy[self.i_carrot, 0], xy[self.i_carrot, 1], '^',
+                        color='k', ms=9, label='La carrot empieza a moverse')
+            puntos.append(xy)
+        if self.carrot is not None:
+            ax.plot(self.carrot[0], self.carrot[1], '*', color='tab:red',
+                    ms=14, label='Zanahoria')
+
         if puntos:
             todos = np.vstack(puntos)
-            margen = 0.5
-            self.ax.set_xlim(todos[:, 0].min() - margen,
-                             todos[:, 0].max() + margen)
-            self.ax.set_ylim(todos[:, 1].min() - margen,
-                             todos[:, 1].max() + margen)
+            ax.set_xlim(todos[:, 0].min() - 0.5, todos[:, 0].max() + 0.5)
+            ax.set_ylim(todos[:, 1].min() - 0.5, todos[:, 1].max() + 0.5)
+        ax.set_title(self.titulo(), fontsize=9)
+        ax.set_xlabel('X [m]')
+        ax.set_ylabel('Y [m]')
+        ax.set_aspect('equal')
+        ax.grid(True)
+        if ax.get_legend_handles_labels()[0]:
+            ax.legend(loc='best', fontsize=8)
 
-    # Analisis y guardado
-    def nombre_ruta(self):
-        # El nombre mas largo primero, por si uno es prefijo de otro
-        for nombre in sorted(self.rutas_conocidas, key=len, reverse=True):
-            if self.run_name.startswith(nombre):
-                return nombre
-        return self.run_name
+    def pintar_error(self, ax):
+        """Distancia a la ruta en el tiempo, con el tiempo partiendo en 0."""
+        if self.dist:
+            t = np.array(self.tiempos) - self.tiempos[0]
+            ax.plot(t, self.dist, color='tab:red', lw=1.2,
+                    label='Distancia a la ruta')
+            if self.i_carrot is not None and self.i_carrot < len(t):
+                ax.axvline(t[self.i_carrot], color='k', ls=':', lw=1,
+                           label='La carrot empieza a moverse')
+        ax.set_title('Error en el tiempo', fontsize=9)
+        ax.set_xlabel('Tiempo [s]')
+        ax.set_ylabel('Distancia a la ruta [m]')
+        ax.grid(True)
+        if ax.get_legend_handles_labels()[0]:
+            ax.legend(loc='best', fontsize=8)
+
+    def refresh(self):
+        self.ax.cla()
+        self.pintar(self.ax)
+        self.ax_err.cla()
+        self.pintar_error(self.ax_err)
 
     def guardar(self):
-        if len(self.traza) < 2 or self.ruta is None:
+        if not self.traza:
             self.get_logger().warn('No hay rastro que guardar.')
             return
 
         os.makedirs(self.output_dir, exist_ok=True)
         stamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        corrida = f'{self.run_name}_{stamp}'
-        base = os.path.join(self.output_dir, corrida)
+        archivo = os.path.join(self.output_dir, f'{self.run_name}_{stamp}.png')
 
-        arr = np.array(self.traza)
-        t = arr[:, 0] - arr[0, 0]
-        xy = arr[:, 1:3]
-        d = np.array(self.dist)
-        m = metricas_desde(t, d)
-
-        # CSV del rastro (con la distancia a la ruta de cada punto)
-        with open(base + '.csv', 'w', newline='', encoding='utf-8') as f:
-            w = csv.writer(f)
-            w.writerow(['t', 'x', 'y', 'd'])
-            for ti, (xi, yi), di in zip(t, xy, d):
-                w.writerow([f'{ti:.3f}', f'{xi:.4f}', f'{yi:.4f}', f'{di:.5f}'])
-
-        # Grafico de la corrida
-        ruta_nombre = self.nombre_ruta()
-        p = self.parametros
-        fig, (a1, a2) = plt.subplots(1, 2, figsize=(14, 6))
-        dibujar_trayectoria(a1, ruta_nombre, self.ruta, xy, m, leyenda=True)
-        dibujar_error(a2, t, d, m)
-        fig.suptitle(
-            f'Corrida {corrida}   lookahead={p["lookahead"]:g}  '
-            f'kp={p["kp"]:g}  ki={p["ki"]:g}  kd={p["kd"]:g}', fontsize=9
-        )
+        # Figura aparte: la de la ventana puede estar ya cerrada
+        fig = Figure(figsize=(14, 6))
+        a1, a2 = fig.subplots(1, 2)
+        self.pintar(a1)
+        self.pintar_error(a2)
         fig.tight_layout()
-        fig.savefig(base + '.png', dpi=150, bbox_inches='tight')
+        fig.savefig(archivo, dpi=150, bbox_inches='tight')
 
-        # Tabla de corridas
-        tabla = os.path.join(self.output_dir, 'tabla_corridas.csv')
-        nuevo = not os.path.isfile(tabla)
-        with open(tabla, 'a', newline='', encoding='utf-8') as f:
-            w = csv.DictWriter(f, fieldnames=COLUMNAS)
-            if nuevo:
-                w.writeheader()
-            w.writerow({
-                'ruta': ruta_nombre,
-                'corrida': corrida,
-                'lookahead': p['lookahead'],
-                'kp': p['kp'],
-                'ki': p['ki'],
-                'kd': p['kd'],
-                'mse_m2': f'{m["mse"]:.6f}',
-                'rmse_m': f'{m["rmse"]:.4f}',
-                'max_m': f'{m["max"]:.4f}',
-                'tiempo_s': f'{m["dur"]:.1f}',
-                'archivo_csv': corrida + '.csv',
-            })
-
-        # Si es la mejor corrida de su ruta, guardar copia del grafico
-        filas = [f for f in leer_tabla(tabla) if f['ruta'] == ruta_nombre]
-        mejor = min(filas, key=lambda f: float(f['mse_m2']))
-        if mejor['corrida'] == corrida:
-            fig.savefig(
-                os.path.join(self.output_dir, f'mejor_{ruta_nombre}.png'),
-                dpi=150, bbox_inches='tight'
+        self.get_logger().info(f'Imagen guardada en {archivo}')
+        self.get_logger().info(texto_ecm('ECM total', self.dist))
+        if self.i_carrot is not None:
+            self.get_logger().info(
+                texto_ecm('ECM desde la carrot', self.dist[self.i_carrot:])
             )
-            self.get_logger().info(f'Mejor corrida hasta ahora de {ruta_nombre}')
-        plt.close(fig)
-
-        self.get_logger().info(
-            f'Guardado {base}.csv y .png | '
-            f'MSE={m["mse"]:.4f} m2  RMSE={m["rmse"]:.3f} m  '
-            f'max={m["max"]:.3f} m  t={m["dur"]:.1f} s'
-        )
-        self.generar_resumen(tabla)
-
-    def generar_resumen(self, tabla):
-        """Mejor corrida de cada ruta, todas juntas en una imagen."""
-        mejores = {}
-        for fila in leer_tabla(tabla):
-            r = fila['ruta']
-            if r not in self.rutas_conocidas:
-                continue
-            if r not in mejores or float(fila['mse_m2']) < float(
-                mejores[r]['mse_m2']
-            ):
-                mejores[r] = fila
-        nombres = [r for r in self.rutas_conocidas if r in mejores]
-        if not nombres:
-            return
-
-        fig, axs = plt.subplots(
-            2, len(nombres), figsize=(5.5 * len(nombres), 9), squeeze=False
-        )
-        for i, nombre in enumerate(nombres):
-            try:
-                ruta = cargar_ruta(
-                    os.path.join(self.config_dir, nombre + '.txt')
-                )
-                datos = np.loadtxt(
-                    os.path.join(self.output_dir, mejores[nombre]['archivo_csv']),
-                    delimiter=',', skiprows=1, ndmin=2,
-                )
-            except (OSError, ValueError) as exc:
-                self.get_logger().warn(f'Resumen: salto {nombre} ({exc})')
-                axs[0][i].axis('off')
-                axs[1][i].axis('off')
-                continue
-            t, xy, d = datos[:, 0], datos[:, 1:3], datos[:, 3]
-            m = metricas_desde(t, d)
-            dibujar_trayectoria(axs[0][i], nombre, ruta, xy, m, leyenda=(i == 0))
-            dibujar_error(axs[1][i], t, d, m)
-
-        fig.suptitle('Follow The Carrot: mejor corrida de cada trayectoria')
-        fig.tight_layout()
-        salida = os.path.join(self.output_dir, 'resumen_errores.png')
-        fig.savefig(salida, dpi=150, bbox_inches='tight')
-        plt.close(fig)
-        self.get_logger().info(f'Resumen actualizado en {salida}')
 
 
 def main():
