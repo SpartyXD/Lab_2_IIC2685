@@ -13,34 +13,34 @@ def normalizar(a):
 
 class FollowTheCarrotSimple(Node):
     def __init__(self):
-        super().__init__('follow_the_carrot_simple')
+        super().__init__("follow_the_carrot_simple")
 
         # Parametros estandar
-        self.declare_parameter('lookahead', 0.3)
-        self.declare_parameter('ventana', 50)
-        self.declare_parameter('kp', 1.0)
-        self.declare_parameter('ki', 0.0)
-        self.declare_parameter('kd', 0.0)
-        self.declare_parameter('v_lineal', 0.1)
-        self.declare_parameter('max_w', 1.0)
-        self.declare_parameter('eps_final', 0.1)
-        self.declare_parameter('control_hz', 20.0)
+        self.declare_parameter("lookahead", 0.3)
+        self.declare_parameter("ventana", 50)
+        self.declare_parameter("kp", 1.0)
+        self.declare_parameter("ki", 0.0)
+        self.declare_parameter("kd", 0.0)
+        self.declare_parameter("v_lineal", 0.1)
+        self.declare_parameter("max_w", 1.0)
+        self.declare_parameter("eps_final", 0.1)
+        self.declare_parameter("control_hz", 20.0)
 
-        self.lookahead = float(self.get_parameter('lookahead').value)
-        self.ventana = int(self.get_parameter('ventana').value)
-        self.kp = float(self.get_parameter('kp').value)
-        self.ki = float(self.get_parameter('ki').value)
-        self.kd = float(self.get_parameter('kd').value)
-        self.v_lineal = float(self.get_parameter('v_lineal').value)
-        self.max_w = float(self.get_parameter('max_w').value)
-        self.eps_final = float(self.get_parameter('eps_final').value)
-        control_hz = float(self.get_parameter('control_hz').value)
+        self.lookahead = float(self.get_parameter("lookahead").value)
+        self.ventana = int(self.get_parameter("ventana").value)
+        self.kp = float(self.get_parameter("kp").value)
+        self.ki = float(self.get_parameter("ki").value)
+        self.kd = float(self.get_parameter("kd").value)
+        self.v_lineal = float(self.get_parameter("v_lineal").value)
+        self.max_w = float(self.get_parameter("max_w").value)
+        self.eps_final = float(self.get_parameter("eps_final").value)
+        control_hz = float(self.get_parameter("control_hz").value)
 
         # Variables para guardar la ruta
         self.ruta = []        # Lista de puntos [x, y]
         self.arco = []        # Distancia acumulada hasta cada punto
         self.largo_total = 0.0
-        self.idx = 0          # Indice del segmento actual
+        self.idx = 0          # Indice del dx actual
         self.s_cercano = 0.0  # Distancia recorrida actual
 
         # Pose del robot
@@ -54,14 +54,14 @@ class FollowTheCarrotSimple(Node):
         self.t_previo = None
         self.terminado = False
 
-        # Conexiones de ROS2
-        self.create_subscription(Path, 'nav_plan', self.path_cb, 10)
-        self.create_subscription(Odometry, '/odom', self.odom_cb, 10)
-        self.carrot_pub = self.create_publisher(PointStamped, '/carrot', 10)
-        self.cmd_vel_pub = self.create_publisher(Twist, '/cmd_vel', 10)
+        # Tópicos
+        self.create_subscription(Path, "nav_plan", self.path_cb, 10)
+        self.create_subscription(Odometry, "/odom", self.odom_cb, 10)
+        self.carrot_pub = self.create_publisher(PointStamped, "/carrot", 10)
+        self.cmd_vel_pub = self.create_publisher(Twist, "/cmd_vel", 10)
         self.create_timer(1.0 / control_hz, self.control_step)
 
-    def path_cb(self, msg):
+    def path_cb(self, msg): # Desglosamos el mensaje (callback de posición)
         # Convertimos los mensajes a una lista simple de listas [x, y]
         self.ruta = [[p.pose.position.x, p.pose.position.y] for p in msg.poses]
         
@@ -95,15 +95,12 @@ class FollowTheCarrotSimple(Node):
         ori = msg.pose.pose.orientation
         self.yaw = normalizar(2.0 * math.atan2(ori.z, ori.w))
 
-    def buscar_cercano(self):
-        """
-        Encuentra qué tan avanzado va el robot en la ruta usando matemáticas básicas.
-        """
+    def buscar_cercano(self): # definimos a donde se va a mover la zanahora
         inicio = self.idx
         # Solo miramos una "ventana" de segmentos hacia adelante para no revisar toda la ruta
         fin = min(inicio + self.ventana, len(self.ruta) - 1)
 
-        mejor_distancia = float('inf')
+        mejor_distancia = float("inf")
         mejor_s = self.s_cercano
         mejor_indice = inicio
 
@@ -143,17 +140,14 @@ class FollowTheCarrotSimple(Node):
                 # Calculamos cuánta ruta hemos recorrido hasta ese punto
                 largo_segmento = math.sqrt(largo_segmento_al_cuadrado)
                 distancia_en_ruta = self.arco[k] + (porcentaje * largo_segmento)
-                # El robot nunca retrocede
+                # control de casos para que el robot nunca retroceda
                 mejor_s = max(self.s_cercano, distancia_en_ruta)
 
         self.idx = mejor_indice
         self.s_cercano = mejor_s
         return self.s_cercano, mejor_distancia
 
-    def punto_en(self, distancia_objetivo):
-        """
-        Busca las coordenadas (x, y) que están exactamente a 'distancia_objetivo' metros.
-        """
+    def punto_en(self, distancia_objetivo): # Integramos la función buscar_cercano para sumar al lookahead
         distancia_objetivo = max(0.0, min(distancia_objetivo, self.largo_total))
         
         # Buscamos en qué segmento cae esta distancia
@@ -176,7 +170,7 @@ class FollowTheCarrotSimple(Node):
         # Si algo falla, devolvemos el último punto
         return self.ruta[-1][0], self.ruta[-1][1]
 
-    def pid(self, error):
+    def pid(self, error): #PID de toda la vida
         ahora = self.get_clock().now().nanoseconds / 1e9
         if self.t_previo is None:
             dt = 0.0
@@ -196,7 +190,7 @@ class FollowTheCarrotSimple(Node):
         u = self.kp * error + self.ki * self.integral + self.kd * derivada
         return max(-self.max_w, min(self.max_w, u))
 
-    def control_step(self):
+    def control_step(self): # Se encarga de accionar todo
         if self.terminado or not self.ruta or self.x is None:
             return
 
@@ -214,7 +208,7 @@ class FollowTheCarrotSimple(Node):
         # Publicar zanahoria para depuración (RViz2)
         msg = PointStamped()
         msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = 'odom'
+        msg.header.frame_id = "odom"
         msg.point.x = xc
         msg.point.y = yc
         self.carrot_pub.publish(msg)
@@ -238,6 +232,7 @@ class FollowTheCarrotSimple(Node):
 
 
 def main():
+    # tanta cosa es solo para que cuando haya ctrl + c se pitee y no quede dando vuelta
     rclpy.init(signal_handler_options=SignalHandlerOptions.NO)
     node = FollowTheCarrotSimple()
     try:
@@ -251,5 +246,5 @@ def main():
         if rclpy.ok():
             rclpy.shutdown()
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

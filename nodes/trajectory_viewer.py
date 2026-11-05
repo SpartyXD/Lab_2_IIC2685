@@ -1,23 +1,4 @@
 #!/usr/bin/env python3
-"""Ventana en vivo para Follow The Carrot.
-
-Dibuja la ruta original (gris), el rastro real (azul), el robot y la
-zanahoria (rojo). En el titulo muestra dos errores:
-  - ECM total: todo el recorrido del robot.
-  - ECM desde la carrot: desde que la zanahoria empieza a moverse, asi no
-    cuenta el tramo desde donde parte el robot hasta la ruta.
-ECM = promedio de (distancia minima del robot a la ruta)^2.
-
-Al cerrar la ventana (o con Ctrl+C) guarda UNA imagen:
-    <output_dir>/<run_name>_<fecha>.png
-
-Parametros:
-    run_name    nombre de la corrida (va en el nombre de la imagen)
-    output_dir  carpeta de salida. Por defecto 'imagenes', dentro del
-                proyecto (src/lab2/imagenes). Una ruta relativa se interpreta
-                desde la raiz del proyecto; una absoluta se usa tal cual.
-    lookahead, kp, ki, kd   solo informativos: salen en el titulo.
-"""
 import math
 import os
 from datetime import datetime
