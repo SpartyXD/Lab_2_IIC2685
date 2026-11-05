@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Obtiene rangos HSV para un mask a partir de una región de /image_raw.
+"""HECHO CON IA. Obtiene rangos HSV para un mask a partir de una región de /image_raw.
 
 Controles:
     espacio    congela o descongela la imagen

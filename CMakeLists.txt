@@ -12,20 +12,21 @@ find_package(ament_cmake REQUIRED)
 # find_package(<dependency> REQUIRED)
 
 install(PROGRAMS
-  nodes/color_range_picker.py 
-  nodes/dead_reckoning_nav.py
-  nodes/depth_snapshot.py
-  nodes/detector_de_objeto_tester.py 
-  nodes/detector_de_objeto.py
-  nodes/detector_de_objeto_v2.py
-  nodes/follow_the_carrot.py
-  nodes/hsv_ranges.py
-  nodes/robot_controller.py
-  nodes/pose_loader.py
-  nodes/seguidor_de_objeto.py
-  nodes/trajectory_logger.py
-  nodes/path_loader.py
-  nodes/trajectory_viewer.py
+  # Parte 1: control P/PI y trayectoria
+  nodes/parte1/dead_reckoning_nav.py
+  nodes/parte1/pose_loader.py
+  nodes/parte1/robot_controller.py
+  nodes/parte1/trajectory_logger.py
+  # Parte 2: follow the carrot
+  nodes/parte2/follow_the_carrot.py
+  nodes/parte2/path_loader.py
+  nodes/parte2/trajectory_viewer.py
+  # Parte 3: deteccion y seguimiento del cuadrado
+  nodes/parte3/color_range_picker.py
+  nodes/parte3/depth_snapshot.py
+  nodes/parte3/detector_de_objeto.py
+  nodes/parte3/hsv_ranges.py
+  nodes/parte3/seguidor_de_objeto.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
