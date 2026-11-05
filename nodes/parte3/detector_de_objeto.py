@@ -48,7 +48,7 @@ class ObjectDetector(Node):
         self.queue_rgb = deque(maxlen=2)
         self.queue_depth = deque(maxlen=2)
 
-        self._ultima_pos = 0
+        self.ultima_pos = 0
         self.hay_ultima_pos = False
         self.ultima_pos_especial = False
         self.contador_sin_cuadrado = 0
@@ -90,14 +90,6 @@ class ObjectDetector(Node):
 
         # Create a detector with the parameters
         self.detector = cv2.SimpleBlobDetector_create(blob_params)
-
-    @property
-    def ultima_pos(self):
-        return self._ultima_pos
-
-    @ultima_pos.setter
-    def ultima_pos(self, valor):
-        self._ultima_pos = int(valor)
 
     def actualizar_posicion(self, detectado, x, borde, limite):
 
@@ -245,7 +237,7 @@ class ObjectDetector(Node):
             )
             x = int(coords[0] - ancho / 2)
             detected = True
-            cv2.putText(bgr_array, f"raw={x}", coords, 1, 2, (0, 0, 0), 1)
+            cv2.putText(bgr_array, str(x), coords, 1, 2, (0, 0, 0), 1)
             cv2.line(bgr_array, (int(ancho/2), coords[1]), coords, (0, 0, 0), 2)
             break
 
