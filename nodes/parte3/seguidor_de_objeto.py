@@ -8,7 +8,7 @@ import message_filters
 
 ACCEL_SUBIDA = 0.8 # 0.25 segs 0 -> 0.2
 ACCEL_BAJADA = 1.2 # 0.125 segs 0.2 -> 0.0
-KP = 0.005
+KP = 0.008
 
 class PIDController( Node ):
 
