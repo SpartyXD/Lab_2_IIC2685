@@ -14,8 +14,16 @@ from sensor_msgs.msg import Image
 from cv_bridge import CvBridge
 
 DISTANCIA_MIN = 100
-DISTANCIA_MAX = 1500
-ESPESOR_MAX = 60
+DISTANCIA_MAX = 2200
+ESPESOR_MAX = 500
+
+TOLERANCIA_POS = 80
+MAX_FRAMES_SIN_CUADRADO = 10
+MAX_FRAMES_SIN_CUADRADO_BORDE = 3
+FRAMES_PARA_APARICION = 3
+MARGEN_BORDE = 45
+MARGEN_DISTANCIA = 150
+
 SHOW_MASKS = True
 SHOW_IMG = True
 
@@ -40,7 +48,14 @@ class ObjectDetector(Node):
         self.queue_rgb = deque(maxlen=2)
         self.queue_depth = deque(maxlen=2)
 
-        # https://stackoverflow.com/questions/57119292/how-to-merge-2-ros-topics-into-1#comment100853370_57120257
+        self.ultima_pos = 0
+        self.hay_ultima_pos = False
+        self.ultima_pos_especial = False
+        self.contador_sin_cuadrado = 0
+        self.contador_candidato = 0
+        self.pos_candidata = 0
+
+        # https://stackoverflow.com/questions/57119292/how-to-merge-2-ros-topics-into-1#comment100853370_57120257 (descartado, un robot no traía stamps en el header)
         self.get_logger().info("Iniciando ...")
 
         self.depth_sub = self.create_subscription(Image, '/depth/image_raw', self.depth_callback, 2)
@@ -71,10 +86,85 @@ class ObjectDetector(Node):
 
         # Filter by Inertia
         blob_params.filterByInertia = True
-        blob_params.minInertiaRatio = 0.3
+        blob_params.minInertiaRatio = 0.25
 
         # Create a detector with the parameters
         self.detector = cv2.SimpleBlobDetector_create(blob_params)
+
+    def actualizar_posicion(self, detectado, x, borde, limite):
+
+        especial = borde or limite
+
+        if detectado:
+            if self.hay_ultima_pos:
+                if especial or abs(x - self.ultima_pos) <= TOLERANCIA_POS:
+                    self.ultima_pos = x
+                    self.hay_ultima_pos = True
+                    self.ultima_pos_especial = especial
+                    self.contador_sin_cuadrado = 0
+                    self.contador_candidato = 0
+                    self.pos_candidata = 0
+                    return True, x
+
+                # Lejos del anterior o no es caso especial (se asume ruido)
+                self.contador_sin_cuadrado += 1
+                maximo = (MAX_FRAMES_SIN_CUADRADO_BORDE if self.ultima_pos_especial else MAX_FRAMES_SIN_CUADRADO)
+                if self.contador_sin_cuadrado >= maximo:
+                    self.ultima_pos = 0
+                    self.hay_ultima_pos = False
+                    self.ultima_pos_especial = False
+                    self.contador_sin_cuadrado = 0
+                    self.contador_candidato = 1
+                    self.pos_candidata = x
+                    return False, 0
+                else:
+                    return True, self.ultima_pos
+
+            # No hay posicion previa
+            else:
+                if especial:
+                    self.ultima_pos = x
+                    self.hay_ultima_pos = True
+                    self.ultima_pos_especial = True
+                    self.contador_sin_cuadrado = 0
+                    self.contador_candidato = 0
+                    self.pos_candidata = 0
+                    return True, x
+
+                if self.contador_candidato == 0 or abs(x - self.pos_candidata) <= TOLERANCIA_POS:
+                    self.contador_candidato += 1
+                else:
+                    self.contador_candidato = 1
+                self.pos_candidata = x
+
+                if self.contador_candidato >= FRAMES_PARA_APARICION:
+                    self.ultima_pos = x
+                    self.hay_ultima_pos = True
+                    self.ultima_pos_especial = False
+                    self.contador_sin_cuadrado = 0
+                    self.contador_candidato = 0
+                    self.pos_candidata = 0
+                    return True, x
+                else:
+                    return False, 0
+
+        # Sin deteccion
+        else:
+            self.contador_candidato = 0
+            self.pos_candidata = 0
+            if not self.hay_ultima_pos:
+                return False, 0
+            else:
+                self.contador_sin_cuadrado += 1
+                maximo = (MAX_FRAMES_SIN_CUADRADO_BORDE if self.ultima_pos_especial else MAX_FRAMES_SIN_CUADRADO)
+                if self.contador_sin_cuadrado >= maximo:
+                    self.ultima_pos = 0
+                    self.hay_ultima_pos = False
+                    self.ultima_pos_especial = False
+                    self.contador_sin_cuadrado = 0
+                    return False, 0
+                else:
+                    return True, self.ultima_pos
 
     def rgb_callback(self, rgb_data):
         self.get_logger().info("Imagen RGB Recibida")
@@ -116,8 +206,10 @@ class ObjectDetector(Node):
         imagen_color_valido= cv2.bitwise_and(bgr_array, bgr_array, mask= mask_distancia & mask_color)
         
         # Detect blob
-        x=0
+        x = 0
         detected = False
+        borde = False
+        limite = False
         keypoints = self.detector.detect(mask_distancia & mask_color)
         for blob in sorted(keypoints, key=lambda kp: kp.size, reverse=True):
             radio = max(int(blob.size * 0.3), 2)
@@ -131,17 +223,39 @@ class ObjectDetector(Node):
                 continue
             if np.percentile(z, 90) - np.percentile(z, 10) > ESPESOR_MAX:
                 continue
-            x =  int(coords[0]-ancho/2)
+
+            z_mediana = float(np.median(z))
+            borde = (
+                coords[0] <= MARGEN_BORDE
+                or coords[0] >= ancho - MARGEN_BORDE
+                or coords[1] <= MARGEN_BORDE
+                or coords[1] >= alto - MARGEN_BORDE
+            )
+            limite = (
+                z_mediana <= DISTANCIA_MIN + MARGEN_DISTANCIA
+                or z_mediana >= DISTANCIA_MAX - MARGEN_DISTANCIA
+            )
+            x = int(coords[0] - ancho / 2)
             detected = True
-            cv2.putText(bgr_array, str(x), coords, 1, 2, (0, 0, 0),1)
+            cv2.putText(bgr_array, str(x), coords, 1, 2, (0, 0, 0), 1)
             cv2.line(bgr_array, (int(ancho/2), coords[1]), coords, (0, 0, 0), 2)
             break
+
+        detectado_publicado, pos_publicada = self.actualizar_posicion(
+            detected, x, borde, limite
+        )
+
+        cv2.putText(
+            bgr_array,
+            f"pub={pos_publicada} last={self.ultima_pos} ",
+            (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (0, 255, 255), 2
+        )
         cv2.line(bgr_array, (int(ancho/2), 0), (int(ancho/2), alto), (0, 0, 0), 2)
 
         pos_x = Int16()
         square_detected = Bool()
-        pos_x.data = x
-        square_detected.data = detected
+        pos_x.data = pos_publicada
+        square_detected.data = detectado_publicado
         self.blue_square_position_pub.publish(pos_x)
         self.blue_square_detected_pub.publish(square_detected)
 
