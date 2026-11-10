@@ -9,8 +9,8 @@ from std_msgs.msg import String
 from ament_index_python.packages import get_package_share_directory as pkg_dir
 import matplotlib.pyplot as plt
 
-from robot_controller import VEL_KP, VEL_KI, VEL_KD, ANGLE_KP, ANGLE_KI, ANGLE_KD
-from dead_reckoning_nav import ESCALA_TIEMPO
+from lab2.nodes.robot_controller import VEL_KP, VEL_KI, VEL_KD, ANGLE_KP, ANGLE_KI, ANGLE_KD
+from lab2.nodes.dead_reckoning_nav import ESCALA_TIEMPO
 
 #Funciones auxiliares
 def angulo(a):
@@ -92,10 +92,10 @@ class TrajectoryLogger(Node):
         vel_setpoints, vel_acts, vel_states = zip(*self.vel_signals)
         angle_setpoints, angle_acts, angle_states = zip(*self.angle_signals)
 
-        #Graficar
+        #Graficar todo
         fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(10, 8), sharex=True)
 
-        # Graph 1: Velocity Signals
+        #Grafico 1 (senales vel)
         ax1.plot(tiempo, vel_setpoints, label="Referencia", linestyle="-", color="crimson", linewidth=2)
         ax1.plot(tiempo, vel_acts, label="Actuacion", linestyle="--", color="darkblue", linewidth=2)
         ax1.plot(tiempo, vel_states, label="Estado", linestyle="-.", color="forestgreen", linewidth=2)
@@ -104,7 +104,7 @@ class TrajectoryLogger(Node):
         ax1.legend(loc="upper right")
         ax1.grid(True, linestyle=":", alpha=0.6)
 
-        # Graph 2: Angle Signals
+        #Grafico 2 (senales angle)
         ax2.plot(tiempo, angle_setpoints, label="Referencia", linestyle="-", color="crimson", linewidth=2)
         ax2.plot(tiempo, angle_acts, label="Actuacion", linestyle="--", color="darkblue", linewidth=2)
         ax2.plot(tiempo, angle_states, label="Estado", linestyle="-.", color="forestgreen", linewidth=2)
@@ -114,7 +114,6 @@ class TrajectoryLogger(Node):
         ax2.legend(loc="upper right")
         ax2.grid(True, linestyle=":", alpha=0.6)
 
-        # Adjust layout to prevent overlapping labels
         plt.tight_layout()
         plt.show()
 
